@@ -1,0 +1,124 @@
+Experiment CP1B
+start: January 2019
+Bogna Ignatowska-Jankowska
+Okinawa Institute of Science and Technology
+this file update: 19_02_2021
+
+subjects
+male c57BL mice
+n=6
+source: CLEA Japan
+11-13 weeks old at the time of experiment
+
+DOB MC4 12_11_2018
+DOB MC5 17_11_2018
+arrived: 27_12_2019
+markers implanted: 17_01_2019
+recording dates: 31_01_2019, 1_02_2019,4_02_2019, 7_02_2019, 12_02_2019
+
+Within subject Latin Square design								
+
+There are 26 "samples" (e.g. "s7") 6 individual mice (in 2 cages) x 4 treatments administered and tested in randomized order (days 1-3 were spaced with at least 48 h wash out period)
+
+sample	mouse	cage	dose  	important notes									
+s1*		M1	MC4	D 	DISCARDED (NOT PROCESSED: recording malfunction), REPLICATED IN S25  
+S2		M2	MC4	A
+S3		M3	MC4	B
+S4		M4	MC5	C
+S5		M5	MC5	D
+S6		M6	MC5	A
+S7		M1	MC4	C
+S8		M2	MC4	D
+S9		M3	MC4	A
+S10		M4	MC5	B
+S11		M5	MC5	C
+S12		M6	MC5	D
+S13		M1	MC4	B
+S14		M2	MC4	C
+S15		M3	MC4	D
+S16		M4	MC5	A
+S17		M5	MC5	B
+S18		M6	MC5	C	NO BACK 
+S19		M1	MC4	A	NO UPPER COORDINATES
+S20*	M2	MC4	D 	DISCARDED (NOT PROCESSED: accidental wrong injection), REPLICATED IN S26 
+S21		M3	MC4	C
+S22		M4	MC5	D
+S23		M5	MC5	A
+S24		M6	MC5	B	NO BACK 
+S25* 	M1	MC4	D 	S1b replication [use instead s1]NO UPPER COORDINATES
+S26* 	M2	MC4	B 	S20B replication [use instead s20]NO BACK 
+				
+
+			
+	
+Treatmeant (CP55,940 dose)		
+	A	0 mg/kg	
+	B	0.03 mg/kg	
+	C	0.01 mg/kg	
+	D	0.3mg/kg	
+						
+Administered i.p. at 1 ml/100 g of body mass
+								
+Prepared drugs	
+CP55,940
+0.003 mg/ml
+0.001 mg/ml						
+0.03 mg/ml		
+								
+vehicle: (1:1:18) ethanol, colliphor, saline					
+																						
+Pretreatment time  15 min
+
+
+Filename example							
+
+'CP1B_S14_M2_MC4_7_02_2019_11_30_Floor2_proc_bij_8_3_2019_C'
+CP1B=experiment (replication of CP1)
+s14=sample chronological number
+M2=individual mouse# 
+MC4=cage id
+CLB=CLBG=climbing 
+FL2=Floor2=OF=open_field 30 x 30 cm textured green floor (novel environment)
+7_02_2019=recording date
+proc_bij_8_3_2019=processing date and initials who processed
+D=treatment
+ 
+sample number is chronological order in which animals were ran and it is a randomized order
+to decode group asignment and individual animals it is best to use randomization table above and sort data accordingly
+discard samples marked as DISCARDED those processed files do not exist
+
+Recording
+300 Hz
+120 s 
+recording starts WITHOUT animal in the arena but ends sharp 120 s 
+*either start from time zero till 120 (first 2-3 s without animal consistently), 
+or discard first 5 s and everything above 65s to get 60 second recording
+
+
+Markers
+10 markers 
+
+left_ankle
+right_ankle
+left_knee
+right_knee
+left_hip
+right_hip
+left_coord
+right_coord
+left_back
+right_back
+
+
+some animals lost their markers (see table: s18, s24, s26) or coordinates (s19,s25)
+
+"Hip" markets are directly over hip bone
+"Coord" markers are approx 1 cm above hip bone (marker closest to center of mass)
+"Back" markers are directly over shoulderblades
+"Ankle" represents lower tibia bone near ankle joint
+"Knee" represents higher tibia bone near knee joint
+there may be recordings where markers are missing (mouse lost piercing during experiment)
+
+Length of markers in this experiment may not be consistent, 6-8 mm (in later experiemnts markers are 6 mm (shoulder or coordinate),7 mm (hips), 8 mm (legs) long)
+with 3 mm ball but 5 mm bals are used for experiments
+

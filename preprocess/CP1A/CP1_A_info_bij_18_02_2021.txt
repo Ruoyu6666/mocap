@@ -1,0 +1,111 @@
+Experiment CP1A (preliminary)
+start: September 2018
+Bogna Ignatowska-Jankowska
+Okinawa Institute of Science and Technology
+this file update: 19_02_2021
+
+subjects
+male c57BL mice (not naive: HRML experiment before)
+n=4
+source: OIST pool mice 
+DOB MC2 30_01_2018
+DOB MC3 20_02_2018
+7-8 month old at the time of experiment
+first implants: 16_03_2018
+recording dates: 12_09_2018, 14_09_2018, 18_09_2018, 21_09_2018
+
+Within subject Latin Square design								
+
+There are 16 "samples" (e.g. "s7") 
+4 individual mice x 4 treatments administered 
+tested in randomized order 
+days 1-4 were spaced with at least 48 h wash out period
+
+					
+12.09.2018	mouse/cageID	group	notes
+	1	M14MC2		D
+	2	M15MC2		A
+	3	M1MC3		B
+	4	M1MC3		C 	NO BACK markers
+14.09.2018
+	5	M14MC2		C
+	6	M15MC2		D
+	7	M1MC3		A
+	8	M1MC3		B 	NO BACK markers
+18.09.2010	
+	9	M14MC2		B
+	10	M15MC2		C
+	11	M1MC3		D 	NO BACK markers
+	12	M1MC3		A 	NO BACK markers
+21.09.2018	
+	13	M14MC2		A
+	14	M15MC2		B
+	15	M1MC3		C 	NO BACK markers
+	16	M19MC3		D 	NO BACK markers
+			
+	
+Treatmeant (CP55,940 dose)		
+	A	0 mg/kg	
+	B	0.03 mg/kg	
+	C	0.01 mg/kg	
+	D	0.3mg/kg	
+						
+Administered i.p. at 1 ml/100 g of body mass
+								
+Prepared drugs	
+CP55,940
+0.003 mg/ml
+0.001 mg/ml						
+0.03 mg/ml		
+								
+vehicle: (1:1:18) ethanol, colliphor, saline				A		
+																						
+Pretreatment time  15 min
+
+
+Filename example							
+
+'CP1_S1_M14_MC2_FL2_12_09_2018_1300_proc_BIJ_5_11_2018_D'
+CP1=experiment
+s1=sample chronological number
+M14=individual mouse# 
+MC2=cage id
+CLB=CLBG=climbing 
+FL2=Floor2=OF=open_field 30 x 30 cm textured green floor (novel environment)
+5_11_2018=recording date
+proc_bij_5_11_2019=processing date and initials who processed
+D=treatment
+ 
+sample number is chronological order in which animals were ran and it is a randomized order
+to decode group asignment and individual animals it is best to use randomization table above and sort data accordingly
+
+Recording
+300 Hz
+120 s 
+recording starts with animal in the arena (start from time zero)
+disregard everything after 120s
+
+Markers
+varying number of markers
+
+left_ankle
+right_ankle
+left_knee
+right_knee
+left_hip
+right_hip
+left_back
+right_back
+
+some mice have also markers on arms (disregard)
+some animals lost their back markers (see table: s4, s8, s11, s12, s15,s16)
+
+"Hip" markets are directly over hip bone
+"Back" markers are directly over shoulderblades
+"Ankle" represents lower tibia bone near ankle joint
+"Knee" represents higher tibia bone near knee joint
+there may be recordings where markers is missing (mouse lost piercing during experiment)
+
+Length of markers in this experiment may not be consistent, 6-8 mm with 3-4 mm ball 
+(in later experiemnts markers are 6 mm (shoulder or coordinate),7 mm (hips), 8 mm (legs) long with 3 mm ball but 5 mm bals are used for experiments)
+

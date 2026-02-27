@@ -1,0 +1,140 @@
+Experiment INH2B
+start: 9.03.2020
+Bogna Ignatowska-Jankowska
+Okinawa Institute of Science and Technology
+this file update: 27_09_2021
+
+subjects
+male c57BL mice
+n=12
+source: CLEA Japan
+27-29 weeks old at the time of experiment
+
+*NOTE* In this experiment mice were significantly older than in other experiments because of equipment 
+failure during first recordings (27.-29.11.2019) we paused and posponed the experimets to fix the
+problem and were able to restart only in March 2020. We decided to use the same mice to avoid long term training 
+of new batch of animals and most of markers were in place, those that were not good enough were corrected 
+e.g. 8 mm piercings on legs were replaced with 6 mm piercings (distance from ball to ball=shaft length)
+because bigger were too loose.
+
+DOB MC9 2-7_09_2019
+DOB MC10 2-7_09_2019
+DOB MC11 2-7_09_2019
+arrived 30_10_2019
+
+
+markers implanted(first time): 11-12_11_2019
+8 mm legs
+7 mm hip
+6 mm back+coordinate
+
+first recording dates (INH2A): 
+25_11_2019 (s1-4)
+26_11_2019 (s5-12)
+29_11_2019 (s13-24)
+canceled
+
+markers implanted correction (second time): 06-08_03_2020
+8 mm legs (only MC10 M1, M3, M4)
+6 mm legs (M9 all, M10 M2, M11 all)
+7 mm hip
+6 mm shoulder (replaced with 6 mm MC9 M2., MC10 M2, M3)
+6 mm coordinate (replaced with 7 mm  MC10 M3, MC11 M3)
+
+second recording dates (INH2B): 
+9_03_2020 (s1-4)
+10_03_2020 (s5-12)
+13_03_2020 (s13-24)
+16_03_2020 (s25-36)
+19_03_2020 (s37-48)
+23_03_2020 (s49-60)
+26_03_2020 (s60-72)
+
+
+Within subject Latin Square design								
+
+There are 72 "samples" (e.g. "s7") 
+12 individual mice x 6 treatments administered
+tested in randomized order 
+days 1,2,3,4,5,6 were spaced with at least 72 h wash out period
+
+in rows 1-10 is INDIVIDUAL MOUSE: 
+
+MOUSE	CAGE	#TAIL	SAMPLE INH2b_r1SAMPLE INH2b_r2 SAMPLE INH3b_r3 SAMPLE INH2b_r4 SAMPLE INH2b_r5 SAMPLE INH2b_r6
+1	MC9 (A)	1	s1	F	s13	E	s25	D	s37	C	s49	B	s61	A	
+2	MC9 (A)	2	s2	E	s14	D	s26	C	s38	B	s50	A	s62	F	
+3	MC9 (A)	3	s3	D	s15	C	s27	B	s39	A	s51	F	s63	E	
+4	MC9 (A)	4	s4	C	s16	B	s28	A	s40	F	s52	E	s64	D	
+5	MC10 (B)1	s5	B	s17	A	s29	F	s41	E	s53	D	s65	C	
+6	MC10 (B)2	s6	A	s18	F	s30	E	s42	D	s54	C	s66	B	
+7	MC10 (B)3	s7	F	s19	E	s31	D	s43	C	s55	B	s67	A
+8	MC10 (B)4	s8	E	s20	D	s32	C	s44	B	s56	A	s68	F
+9	MC11 (C)1	s9	E	s21	C	s33	B	s45	D	s57	F	s69	A	
+10	MC11 (C)2	s10	C	s22	B	s34	A	s46	F	s58	E	s70	D	
+11	MC11 (C)3	s11	B	s23	A	s35	F	s47	E	s59	D	s71	C	
+12	MC11 (C)4	s12	D	s24	F	s36	E	s48	A	s60	C	s72	B	
+
+*NOTE* some corrections of randomization took place during the experiment: this is FINAL randomization.						
+								
+	group	prepared drugs		dose			concentration			
+	A	vehicle	+vehicle		0 mg/kg			0 mg/ml		
+	B	AM251+vehicle			3 mg/kg			0.3 mg/ml
+	C	vehicle+PF3845			10 mg/kg		1 mg/ml			
+	D	vehicle+MJN110			1.25 mg/kg		0.125 mg/ml	
+	E	AM251+PF3835
+	F	AM251+MJN110
+								
+vehicle: (1:1:18) ethanol, colliphor, saline	
+			
+								
+Administered i.p. at 1 ml/100 g of body mass								
+								
+Pretreatment time 2 hrs	for inhibitor (PF3845 or MJN110), CB1 antagonist (AM251) or vehicle 10 min before inhibitor
+
+Filename example							
+
+'INH2B_S24_M12_MC11_FL2_13_03_2020_proc_bij_6_04_2020_F'
+INH2B=experiment
+s24=sample chronological number
+M12=individual mouse# 
+MC11=cage id
+FL2=Floor2=OF=open_field 30 x 30 cm textured green floor (novel environment)
+CLB=CLBG=climbing 
+13_03_2020=recording date
+proc_bij_06_04_2020=processing date and initials who processed
+F=treatment
+disregard any other comments
+ 
+sample number is chronological order in which animals were ran and it is a randomized order
+to decode group asignment and individual animals it is best to use randomization table above and sort data accordingly
+
+Recording
+300 Hz
+60 s 
+disregard first 5s (1500 frames) and everything over 65 s
+it takes 3 s to place animal in the arena +2 s slack
+
+Markers
+10 markers 
+
+left_ankle
+right_ankle
+left_knee
+right_knee
+left_hip
+right_hip
+left_coord
+right_coord
+left_back
+right_back
+
+"Hip" markets are directly over hip bone
+"Coord" markers are approx 1 cm above hip bone (marker closest to center of mass)
+"Back" markers are directly over shoulder blades
+"Ankle" represents lower tibia bone near ankle joint
+"Knee" represents higher tibia bone near knee joint
+there may be a couple of recordings where back or coord is missing (mouse lost piercing during experiment)
+
+markers are 6 mm (shoulder or coordinate), 7 mm (hips), 6 or 8 mm (legs) long with 3 mm ball but 5 mm balls are used for experiments
+When analyzing leg trajectories be careful about these 3 animals that have 8 mm leg markers (only MC10: M1, M3, M4 - mouse 5,7 and 8)
+
