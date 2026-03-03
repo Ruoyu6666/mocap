@@ -5,489 +5,435 @@ import pandas as pd
 import torch
 import logging
 
-from DISK.utils.coordinates_utils import create_skeleton_plot, compute_svd
-
-
-
-def init_transforms(_cfg, keypoints, divider, length_input_seq, basedir, outputdir, add_missing=True):
-    transforms = []
-
-    if 'add_missing' in _cfg.feed_data.transforms.keys():
-        length_proba_df = pd.read_csv(os.path.join(basedir, 'datasets', _cfg.feed_data.transforms.add_missing.files[1]))
-        if 'length' not in length_proba_df.columns:
-            raise ValueError(f'No "length" column in file {_cfg.feed_data.transforms.add_missing.files[1]}.')
-        length_proba_df['length'] = length_proba_df['length'].astype('int')
-        length_proba_df['keypoint'] = length_proba_df['keypoint'].astype('str')
-        if _cfg.feed_data.transforms.add_missing.files[0].endswith('.txt'):
-            init_proba = np.loadtxt(os.path.join(basedir, 'datasets', _cfg.feed_data.transforms.add_missing.files[0]))
-            init_proba_df = pd.DataFrame(columns=('keypoint',), data=keypoints)
-            init_proba_df.loc[:, 'proba'] = init_proba
-        elif _cfg.feed_data.transforms.add_missing.files[0].endswith('.csv'):
-            init_proba_df = pd.read_csv(os.path.join(basedir, 'datasets', _cfg.feed_data.transforms.add_missing.files[0]),
-                                        dtype={'keypoint': str})
-        else:
-            raise ValueError('[init_transforms] First missing file should be a txt file or a csv file with a valid '
-                             'extension')
-
-        indep_keypoints = False if 'set_keypoint' in _cfg.feed_data.transforms.add_missing.files[1] else True
-
-        if len(_cfg.feed_data.transforms.add_missing.files) > 2:
-            proba_n_missing = np.loadtxt(
-                os.path.join(basedir, 'datasets', _cfg.feed_data.transforms.add_missing.files[2]))
-        else:
-            proba_n_missing = None
-
-        if add_missing:
-            addmissing_transform = AddMissing_LengthProba(length_proba_df, keypoints, init_proba_df, divider=divider,
-                                                          proba_n_missing=proba_n_missing,
-                                                          indep_keypoints=indep_keypoints,
-                                                          pad=_cfg.feed_data.transforms.add_missing.pad,
-                                                          verbose=0, proba=1, outputdir=outputdir)
-            transforms.append(addmissing_transform)
-
-    if _cfg.feed_data.transforms.viewinvariant:
-        transforms.append(ViewInvariant(proba=1, divider=divider, verbose=0, index_frame=int(length_input_seq / 2),
-                                        outputdir=outputdir))
-    if _cfg.feed_data.transforms.normalize:
-        transforms.append(Normalize(proba=1, divider=divider, verbose=0, outputdir=outputdir))
-    if _cfg.feed_data.transforms.normalizecube:
-        transforms.append(NormalizeCube(proba=1, divider=divider, verbose=0, outputdir=outputdir))
-    if 'swap' in _cfg.feed_data.transforms.keys() and _cfg.feed_data.transforms.swap > 0:
-        transforms.append(Swap2Kp(proba=_cfg.feed_data.transforms.swap, divider=divider, verbose=0, outputdir=outputdir))
-
-    return transforms, proba_n_missing
-
-
-
-
-class Transform(object):
-    """
-    The transforms are applied to input tensor of shape (timepoints, n_keypoints * 3D in format xyzxyz...)
-    The same transform (same parameters) needs to be applied to the input tensor because it corresponds to one sequence, one movement
-    """
-
-    def __init__(self, proba, divider, verbose=0, outputdir='', **kwargs):
-        self.proba = proba
-        self.verbose = verbose
-        self.outputdir = outputdir
-        self.divider = divider
-
-    @staticmethod
-    def apply_transform(x, *args):
-        raise NotImplementedError
-
-    def __call__(self, *args, **kwargs):
-        ### NB: I added this option for x_supp where the transform is calculated on x and applied on x and x_supp
-        raise NotImplementedError
-
-    def untransform(self, x, *args, **kwargs):
-        raise NotImplementedError
+from utils import compute_svd
 
 
 
 
 class ViewInvariant(Transform):
     """
-    See: Xia, H., & Gao, X. (2021). Multi-scale mixed dense graph convolution network for skeleton-based action recognition. IEEE Access, 9, 36475–36484. https://doi.org/10.1109/ACCESS.2020.3049029
-    This only applies a rotation in the X-Y plane. No norm transformation is carried.
+    Applies a rotation in the XY plane to make skeleton sequences view-invariant. No norm transformation is applied.
 
-    IMPORTANT DIFFERENCE BETWEEN ON THE GROUND AND CLIMBING SEQUENCES:
-    - for the climbing sequences, the 3rd SVD vector is chosen to align (the one perpendicular to the back) instead of the 1st one
-    When the mouse is standing, the main vector of the SVD, the one along the back has only a small component
-    on the XY plane, which makes the projection quite noisy and unstable.
-    - the output transformed sequences should have the mouse main axis aligned with the y=0 axis and face the increasing x numbers - to continue to check
+    Strategy:
+    - Compute SVD on a reference frame to find the body's principal axes.
+    - For standing/walking: use A[:,0] (spine axis) — has large XY component.
+    - For climbing:         use A[:,2] (perpendicular to back) — spine is vertical
+                            so A[:,0] has near-zero XY component → unstable.
+    - Climbing detected when the spine axis (A[:,0]) is dominated by Z.
+    - After rotation: body axis aligned with +X (y=0 plane).
+    - Facing direction (±X ambiguity) resolved using left/right hip joints.
+
+    Forward pass  (T, J, 3) or (B, T, J, 3):  __call__   → centers + rotates by +angle
+    Inverse pass  (B, T, J, 3):                untransform → rotates by -angle + re-adds barycenter
     """
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.index_frame = kwargs['index_frame']
+        self.left_idx    = kwargs['left_idx']   # e.g. left hip joint index
+        self.right_idx   = kwargs['right_idx']  # e.g. right hip joint index
 
     def __str__(self):
         return 'ViewInvariant'
 
-    def compute_transform(self, x):
-        # indices_for_barycenter = np.arange(0, 6, dtype=int) # back, coord, & hips # changed 2022-07-07
-        # x is of shape (timepoints, n_keypoints , 3)
-        if x.shape[0] <= self.index_frame:
-            idx = x.shape[0] - 1
-        else:
-            idx = self.index_frame
-        points = x[idx, :, :]
-        mask_na_points = np.any(np.isnan(points), axis=1)
-        if np.all(mask_na_points):
-            idces = np.where(np.sum(np.isnan(x), axis=(1, 2)) == 0)[0]
-            idx = idces[np.argmin(np.abs(idces - self.index_frame))]
-            points = x[idx, :, :]
-            mask_na_points = np.any(np.isnan(points), axis=1)
-        points = points[~mask_na_points]
+    # ------------------------------------------------------------------ #
+    #  Internal helpers                                                    #
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _rotate_xy(array, angle):
+        """
+        Apply a 2D rotation of `angle` radians in the XY plane.
+        Works on any array whose last dimension is >= 2 (X, Y, [Z, ...]). Z and higher dimensions are left unchanged.
+        Args:
+            array: (..., 3)
+            angle: float
+        Returns:
+            rotated array of same shape
+        """
+        cos_a, sin_a = np.cos(angle), np.sin(angle)
+        out = array.copy()
+        out[..., 0] = array[..., 0] * cos_a - array[..., 1] * sin_a
+        out[..., 1] = array[..., 0] * sin_a + array[..., 1] * cos_a
+        return out
 
-        barycenter, A = compute_svd(points)
+    def _needs_flip(self, rotated_points, A, angle):
+        """
+        Check if the mouse is facing -X after rotation, needs a 180° flip.
+        Uses left/right hip joints: forward = cross(left→right, spine).
+
+        Args:
+            rotated_points: (J, 3) already rotated + centered reference frame
+            A:              (3, 3) SVD axes of the original frame
+            angle:          float, current rotation angle (before any flip)
+        Returns:
+            bool: True if a 180° flip is needed
+        """
+        left  = rotated_points[self.left_idx]
+        right = rotated_points[self.right_idx]
+
+        if np.any(np.isnan(left)) or np.any(np.isnan(right)):
+            return False  # can't determine → no flip (safe default)
+
+        lr_vec = right - left
+        # Rotate the spine axis by the same angle
+        cos_a, sin_a = np.cos(angle), np.sin(angle)
+        spine = A[:, 0].copy()
+        spine_rot = np.array([
+            spine[0] * cos_a - spine[1] * sin_a,
+            spine[0] * sin_a + spine[1] * cos_a,
+            spine[2]
+        ])
+        # Forward direction = cross(left→right, spine)
+        forward = np.cross(lr_vec, spine_rot)
+        return bool(forward[0] < 0)
+
+    # ------------------------------------------------------------------ #
+    #  Core transform                                                      #
+    # ------------------------------------------------------------------ #
+
+    def compute_transform(self, x):
+        """
+        Compute barycenter and rotation angle from a single reference frame.
+        Args:
+            x: (T, J, 3)
+        Returns:
+            barycenter:  (3,)   centroid used to center all frames
+            index_vect:  int    SVD column used (0 = spine, 2 = dorsal)
+            angle:       float  rotation angle in radians (includes flip if needed)
+        """
+        # 1. Pick reference frame, fallback to nearest valid frame if needed
+        idx = min(self.index_frame, x.shape[0] - 1)
+        points = x[idx]
+        mask_na = np.any(np.isnan(points), axis=1)
+
+        if np.all(mask_na):
+            valid = np.where(np.sum(np.isnan(x), axis=(1, 2)) == 0)[0]
+            if len(valid) == 0:
+                raise ValueError("No fully valid frame found in sequence.")
+            idx = valid[np.argmin(np.abs(valid - self.index_frame))]
+            points = x[idx]
+            mask_na = np.any(np.isnan(points), axis=1)
+
+        points_clean = points[~mask_na]
+
+        # 2. SVD on clean points
+        barycenter, A = compute_svd(points_clean)
+
+        # 3. Detect climbing: spine axis (A[:,0]) dominated by Z → climbing
         max_component_in_A = np.argmax(np.abs(A), axis=0)
-        
-        # choosing the vector which has the max component with our first_axis:
-        if max_component_in_A[0] == 2: # the mouse is standing or climbing
-            index_vect = 2
-        else:                          # the mouse is on the ground, the main axis is the vector we need
-            index_vect = 0
-        vectx = A[:, index_vect]
-        first_axis = np.array([1, 0, 0])
-        # the angle with cos is the absolute measure of theta without a direction, only the tan calculus is giving the direction
-        angle = np.arctan2(first_axis[1], first_axis[0]) - np.arctan2(vectx[1], vectx[0])
-        return barycenter, A, index_vect, angle
+        if max_component_in_A[0] == 2:  # spine points mostly along Z
+            index_vect = 2              # use dorsal axis (stable XY when climbing)
+        else:
+            index_vect = 0              # use spine axis (stable XY when walking)
+
+        # 4. Rotation angle to align chosen axis with +X
+        vect = A[:, index_vect]
+        angle = -np.arctan2(vect[1], vect[0])
+
+        # 5. Check and fix facing direction using left/right hips
+        centered  = points - barycenter
+        rotated   = self._rotate_xy(centered, angle)
+        if self._needs_flip(rotated, A, angle):
+            angle += np.pi  # absorb 180° flip into the angle
+
+        return barycenter, index_vect, angle
 
     @staticmethod
     def apply_transform(x, barycenter, angle):
+        """
+        Forward transform: center + rotate by +angle in XY.
+        Args:
+            x:          (T, J, 3) or None
+            barycenter: (3,)
+            angle:      float
+        Returns:
+            (T, J, 3) transformed, or None
+        """
         if x is None:
             return None
-        x_norm = np.copy(x) - barycenter
-        x_prime = np.copy(x) - barycenter
-        x_prime[:, :, 0] = x_norm[:, :, 0] * np.cos(angle) - x_norm[:, :, 1] * np.sin(angle) # modify the x coordinates
-        x_prime[:, :, 1] = x_norm[:, :, 0] * np.sin(angle) + x_norm[:, :, 1] * np.cos(angle) # modify the y coordinates
+        centered = x - barycenter
+        return ViewInvariant._rotate_xy(centered, angle)
 
-        x_tmp = np.copy(x) - barycenter
-        x_tmp = torch.from_numpy(x_tmp)
-        x_prime_torch = torch.from_numpy(x_prime)
-        angle_torch = torch.Tensor([angle]).type(torch.float)
-        x_tmp[:, :, 0] = torch.cos(angle_torch) * x_prime_torch[:, :, 0] + torch.sin(angle_torch) * x_prime_torch[:, :, 1]
-        x_tmp[:, :, 1] = - torch.sin(angle_torch) * x_prime_torch[:, :, 0] + torch.cos(angle_torch) * x_prime_torch[:, :, 1]
-
-        return x_prime
-
-
-    def __call__(self, x, *args, x_supp=(), **kwargs):
-
-        barycenter, A, index_vect, angle = self.compute_transform(x)
-        x_prime = self.apply_transform(x, barycenter, angle) # x and x_prime is with holes if any
-        # x_supp_prime has no holes if any, if not, not used
-        x_supp_prime = []
-        for xx in x_supp:
-            x_supp_prime.append(self.apply_transform(xx, barycenter, angle))
-        """
-        if (kwargs['verbose_sample'] or self.verbose == 2) and kwargs['skeleton_graph'] is not None:
-            ### visualization for debugging puposes
-            self.make_visualization(x, barycenter, A, index_vect, x_prime, **kwargs)
-        """
-        kwargs['VI_barycenter'] = barycenter
-        kwargs['VI_angle'] = angle
-        ## update min and max sample in the kwargs dict after ViewInvariant
-        max_ = np.nanmax(x_prime, axis=(0, 1))  # should be of shape 3 (for the x, y, and z axes)
-        min_ = np.nanmin(x_prime, axis=(0, 1))  # same
-        kwargs['min_sample'] = min_
-        kwargs['max_sample'] = max_
-
-        if np.all(np.isnan(x_prime)):
-            print('[ViewInvariant] all nan in x_prime')
-
-        return x_prime, tuple(x_supp_prime), kwargs
-
+    # ------------------------------------------------------------------ #
+    #  Inverse transform                                                   #
+    # ------------------------------------------------------------------ #
 
     def untransform(self, x, *args, **kwargs):
-        ## then un-View Invariant
+        """
+        Inverse transform: rotate by -angle + re-add barycenter.
+        Args:
+            x:       (B, T, J, 3) — batched sequences in canonical frame
+            kwargs:  must contain 'VI_angle' and 'VI_barycenter'
+                     (scalars, numpy arrays, or torch tensors)
+        Returns:
+            (B, T, J, 3) sequences restored to original coordinate frame
+        """
+        # --- Unpack, handle both numpy and torch tensors ---
+        angle      = kwargs['VI_angle']
+        barycenter = kwargs['VI_barycenter']
 
-        if torch.is_tensor(kwargs['VI_barycenter']):
-            angle = kwargs['VI_angle'].detach().cpu().numpy()
-            barycenter = kwargs['VI_barycenter'].detach().cpu().numpy()
-        else:
-            angle = kwargs['VI_angle']
-            barycenter = kwargs['VI_barycenter']
+        if hasattr(angle, 'detach'):            # torch tensor
+            angle = angle.detach().cpu().numpy()
+        if hasattr(barycenter, 'detach'):
+            barycenter = barycenter.detach().cpu().numpy()
 
-        if len(x.shape) == 3:  # time, keypoints, 3D or 2D
-            x_norm = np.array(x)
-            x_prime = np.array(x)
-            barycenter = np.tile(np.tile(barycenter, x.shape[1]), x.shape[0]).reshape(x.shape)
-            x_prime[:, :, 0] = np.cos(angle) * x_norm[:, :, 0] + np.sin(angle) * x_norm[:, :, 1]
-            x_prime[:, :, 1] = - np.sin(angle) * x_norm[:, :, 0] + np.cos(angle) * x_norm[:, :, 1]
-            x_prime += barycenter
-            x_prime[x == 0] = 0
+        angle      = float(np.squeeze(angle))
+        barycenter = np.array(barycenter).reshape(3)  # ensure (3,)
 
-            return x_prime
+        x_arr = np.array(x)                    # (B, T, J, 3), safe copy
+        x_inv = self._rotate_xy(x_arr, -angle) # --- Inverse rotation: apply -angle ---
+        x_inv = x_inv + barycenter             # Re-add barycenter
+
+        # --- Restore original NaN/zero mask ---
+        # Positions that were NaN/missing before transform were zeroed;
+        # set them back to NaN so downstream code handles them correctly.
+        nan_mask = np.all(x_arr == 0, axis=-1)  # (B, T, J) — all coords zero
+        x_inv[nan_mask] = np.nan
+
+        return x_inv
+
+    # ------------------------------------------------------------------ #
+    #  __call__                                                            #
+    # ------------------------------------------------------------------ #
+    def __call__(self, x, *args, x_supp=(), **kwargs):
+        """
+        Args:   x:      (T, J, 3) primary sequence
+                x_supp: tuple of supplementary sequences, same shape
+        Returns:     x_prime:      (T, J, 3) view-invariant primary sequence
+                     x_supp_prime: tuple of transformed supplementary sequences
+                    kwargs:       updated with VI_barycenter, VI_angle,
+                                  min_sample, max_sample
+        """
+        barycenter, index_vect, angle = self.compute_transform(x)
+        x_prime = self.apply_transform(x, barycenter, angle)
+        x_supp_prime = tuple(self.apply_transform(xx, barycenter, angle) for xx in x_supp)
+
+        if np.all(np.isnan(x_prime)):
+            print('[ViewInvariant] Warning: all NaN in x_prime')
+
+        kwargs['VI_barycenter'] = barycenter
+        kwargs['VI_angle']      = angle
+        kwargs['min_sample']    = np.nanmin(x_prime, axis=(0, 1))  # (3,)
+        kwargs['max_sample']    = np.nanmax(x_prime, axis=(0, 1))  # (3,)
+
+        return x_prime, x_supp_prime, kwargs
 
 
-        elif len(x.shape) == 4:  # batch, time, keypoints, 2D or 3D
-            x_norm = np.array(x)
-            x_prime = np.array(x)
-
-            angle_tiled = np.tile(np.tile(angle,  x.shape[2]), x.shape[1]).reshape(x.shape[:-1])
-            barycenter = np.tile(np.tile(kwargs['VI_barycenter'], x.shape[2]), x.shape[1]).reshape(x.shape)
-            #print(barycenter[0, 0, 0, :], barycenter[0, 0, :2, 0], barycenter[0, :2, 0, 0])
-            x_prime[:, :, :, 0] = np.cos(angle_tiled) * x_norm[:, :, :, 0] + np.sin(angle_tiled) * x_norm[:, :, :, 1]
-            x_prime[:, :, :, 1] = - np.sin(angle_tiled) * x_norm[:, :, :, 0] + np.cos(angle_tiled) * x_norm[:, :, :, 1]
-            x_prime += barycenter
-            x_prime[x == 0] = 0
-
-            return x_prime
-
-        else:
-            raise ValueError
 
 
-
-
-class NormalizeCube(Transform):
+class NormalizeCube:
     """
-    See: https://github.com/shlizee/Predict-Cluster/blob/master/ucla_demo.ipynb
-    normalize_ucla_data function
-
-    Normalization per sample, outputs between -1 and 1 for the 3 axes.
+    Per-sample normalization to [-1, 1] using a SINGLE scale factor across all axes 
+    — preserves the aspect ratio / shape of the skeleton (fits in a cube).
     """
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        pass
 
     def __str__(self):
         return 'Normalize_Cube'
+    
+    
+    @staticmethod
+    def _compute_cube_params(min_, max_):
+        """
+        Compute center and amplitude for cube normalization.
+        Args    :min_: (3,) per-axis minimum, max_: (3,) per-axis maximum
+        Returns:
+            center:    (3,) midpoint per axis
+            amplitude: scalar — largest range across all axes
+        """
+        center    = (max_ + min_) / 2              # (3,) per-axis center
+        amplitude = np.max(max_ - min_)            # scalar — largest range wins
+        return center, amplitude
 
+    @staticmethod
+    def _normalize(x, center, amplitude):
+        """
+        Apply cube normalization.
+        Safe against zero amplitude (returns 0 for degenerate sequences).
+        Args:
+            x:         (..., 3)
+            center:    (3,)
+            amplitude: scalar
+        Returns:
+            normalized array, same shape as x
+        """
+        if amplitude == 0:
+            return np.zeros_like(x)
+        return 2 * (x - center) / amplitude
+
+    @staticmethod
+    def _unnormalize(x, center, amplitude):
+        """
+        Inverse of cube normalization.
+
+        Args:
+            x:         (..., 3)
+            center:    (3,)
+            amplitude: scalar
+        Returns:
+            reconstructed array, same shape as x
+        """
+        return amplitude / 2 * x + center
+
+    
     def __call__(self, x, *args, x_supp=(), **kwargs):
-        """Compute the transform"""
-        # x of shape (time points, keypoints,  3)
+        """
+        Forward normalization.
+        Args:   x:          (T, J, 3)
+                x_supp:     tuple of supplementary sequences, same shape
+        Returns:    x_prime:      (T, J, 3) normalized, all axes in [-1, 1]
+                    x_supp_prime: tuple of normalized supplementary sequences
+                    kwargs:       updated with min_sample (3,), max_sample (3,)
+        """
         max_ = np.nanmax(x, axis=(0, 1))  # should be of shape 3 (for the x, y, and z axes)
         min_ = np.nanmin(x, axis=(0, 1))  # same
-        amplitude = np.max(max_ - min_)  # same for every axis
-        kwargs['min_sample'] = min_
-        kwargs['max_sample'] = max_
+
         if np.any(np.isnan(min_)) or np.any(np.isnan(max_)):
             print(f'[Problem in NormalizeCube] {min_}, {max_}, {x}')
+        kwargs['min_sample'] = min_
+        kwargs['max_sample'] = max_
+        
+        center, amplitude = self._compute_cube_params(min_, max_)
+        # center (3,) and amplitude scalar broadcast naturally over (T, J, 3)
+        x_prime = self._normalize(x, center, amplitude)
+        x_supp_prime = tuple(self._normalize(xx, center, amplitude) for xx in x_supp)
 
-        """Apply the transform"""
-        x_prime = 2 * (x - ((max_ + min_) / 2)) / amplitude  # normalizes between -1 and 1
+        return x_prime, x_supp_prime, kwargs
 
-        x_supp_prime = []
-        for xx in x_supp:
-            yy = 2 * (xx - ((max_ + min_) / 2)) / amplitude  # normalizes between -1 and 1
-            x_supp_prime.append(yy)
 
-        return x_prime, tuple(x_supp_prime), kwargs
+
 
     def untransform(self, x, *args, **kwargs):
-        if torch.is_tensor(kwargs['min_sample']):
-            min_sample = kwargs['min_sample'].detach().cpu().numpy()
-            max_sample = kwargs['max_sample'].detach().cpu().numpy()
-        else:
-            min_sample = kwargs['min_sample']
-            max_sample = kwargs['max_sample']
+        if len(x.shape) not in (3, 4):
+        raise ValueError(f"[NormalizeCube.untransform] Expected 3D (T,J,3) or 4D "
+                         f"(B,T,J,3) input, got shape {x.shape}")
 
-        if len(x.shape) == 3:  # time, keypoints, 3D or 2D
 
-            min_tiled = np.tile(np.tile(min_sample, x.shape[1]), x.shape[0]).reshape(x.shape)#[np.newaxis], (x.shape[0], 1, 1))
-            max_tiled = np.tile(np.tile(max_sample, x.shape[1]), x.shape[0]).reshape(x.shape)
+        min_sample = kwargs['min_sample']
+        max_sample = kwargs['max_sample']
 
-            amplitude = np.max(max_sample - min_sample) # scalar
+        # Handle torch tensors
+        if hasattr(min_sample, 'detach'):
+            min_sample = min_sample.detach().cpu().numpy()
+        if hasattr(max_sample, 'detach'):
+            max_sample = max_sample.detach().cpu().numpy()
 
-        elif len(x.shape) == 4:
-            # x shape: batch, time, keypoints, 2D or 3D
-            # min_sample shape: batch, 2D or 3D
-            min_tiled = np.array([np.tile(np.tile(m,  x.shape[2]), x.shape[1]) for m in min_sample]).reshape(x.shape)
-            max_tiled = np.array([np.tile(np.tile(m,  x.shape[2]), x.shape[1]) for m in max_sample]).reshape(x.shape)
-            # max_tiled = np.tile(np.tile(max_sample,  x.shape[2]), x.shape[1]).reshape(x.shape)
-            #print('min_Tiled', min_tiled[0, 0, :2, 0], min_tiled[0, 0, 0, :])
+        min_sample = np.array(min_sample)
+        max_sample = np.array(max_sample)
 
-            amplitude = np.repeat(np.repeat(np.repeat(np.max(max_sample - min_sample, axis=1), x.shape[3]),  x.shape[2]), x.shape[1]).reshape(x.shape)
-            #print('amplitude', amplitude[0, 0, 0, :], amplitude[0, 0, :2, 0])
-        else:
-            raise ValueError
+        # --- Reshape for broadcasting over (... T, J, 3) ---
+        # (3,)   → (      3,) broadcasts over (T, J, 3) and (B, T, J, 3) naturally
+        # (B, 3) → (B, 1, 1, 3) broadcasts over (B, T, J, 3)
+        if min_sample.ndim == 2:                      # (B, 3) → (B, 1, 1, 3)
+            min_sample = min_sample[:, None, None, :]
+            max_sample = max_sample[:, None, None, :]
+            amplitude  = np.max(max_sample - min_sample, axis=-1, keepdims=True) # (B, 1, 1, 1)
+        else:                                         # (3,) scalar amplitude
+            amplitude  = np.max(max_sample - min_sample)
 
-        # same for every axis
-        reconstructed = amplitude / 2 * x + (max_tiled + min_tiled) / 2
+        center = (max_sample + min_sample) / 2        # matches x shape via broadcast
 
-        return reconstructed
-
+        return self._unnormalize(np.array(x), center, amplitude)
 
 
 
-class Normalize(Transform):
+class Normalize:
     """
-    See: https://github.com/shlizee/Predict-Cluster/blob/master/ucla_demo.ipynb
-    normalize_ucla_data function
-
-    Normalization per sample, outputs between -1 and 1
-    for the 3 axes.
+    Per-sample normalization to [-1, 1] independently for each axis (X, Y, Z).
+    Min/max are computed from the primary sequence x and applied consistently
+    to all supplementary sequences x_supp.
     """
+
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        # No parent init needed — standalone class
+        pass
 
     def __str__(self):
         return 'Normalize'
 
+    @staticmethod
+    def _normalize(x, min_, max_):
+        """
+        Normalize array to [-1, 1] using provided per-axis min/max. Safe against zero-range axes (returns 0 where max == min).
+        Args:    x: (..., 3), min_: (3,), max_: (3,)
+        Returns: normalized array, same shape as x
+        """
+        range_ = max_ - min_
+        # Avoid division by zero: where range is 0, output 0 (midpoint of [-1,1])
+        safe_range = np.where(range_ == 0, 1.0, range_)
+        x_norm = 2 * (x - min_) / safe_range - 1
+        """
+        # Force constant axes to 0 (not ±inf or nan)
+        x_norm[..., range_ == 0] = 0.0
+        """
+        return x_norm
+
+    @staticmethod
+    def _unnormalize(x, min_, max_):
+        """
+        Inverse of _normalize: map [-1, 1] back to original range.
+        Args:
+            x:    (..., 3)
+            min_: (3,)
+            max_: (3,)
+        Returns:
+            reconstructed array, same shape as x
+        """
+        range_ = max_ - min_                          # (3,)
+        return min_ + range_ * (1 + x) / 2
+
     def __call__(self, x, *args, x_supp=(), **kwargs):
-        """Compute the transform"""
-        # x of shape (time points, keypoints,  3)
-        max_ = np.nanmax(x, axis=(0, 1))  # should be of shape 3 (for the x, y, and z axes)
-        min_ = np.nanmin(x, axis=(0, 1))  # same
+        """
+        Forward normalization.
+        Args: x:      (T, J, 3)
+              x_supp: tuple of supplementary sequences, same shape
+        Returns:    x_prime:      (T, J, 3) normalized to [-1, 1]
+                    x_supp_prime: tuple of normalized supplementary sequences
+        kwargs:       updated with min_sample (3,) and max_sample (3,)
+        """
+        # Compute per-axis min/max over all time steps and joints
+        min_ = np.nanmin(x, axis=(0, 1))              # (3,)
+        max_ = np.nanmax(x, axis=(0, 1))              # (3,)
+
+        if np.any(np.isnan(min_)) or np.any(np.isnan(max_)):
+            print(f'[Normalize] Warning: NaN in min/max — '
+                  f'min={min_}, max={max_}. Sequence may be all-NaN.')
+
         kwargs['min_sample'] = min_
         kwargs['max_sample'] = max_
-        if np.any(np.isnan(min_)) or np.any(np.isnan(max_)):
-            print(f'[Problem in Normalize] {min_}, {max_}, {x}')
 
-        """Apply the transform"""
-        x_prime = 2 * (x - min_) / (max_ - min_) - 1  # normalizes between -1 and 1
-        x_supp_prime = []
-        for xx in x_supp:
-            yy = 2 * (xx - min_) / (max_ - min_) - 1  # normalizes between -1 and 1
-            x_supp_prime.append(yy)
+        # Normalize primary sequence. min_/max_ broadcast naturally over (T, J, 3) → last dim aligns
+        x_prime = self._normalize(x, min_, max_)
 
-        return x_prime, tuple(x_supp_prime), kwargs
+        # Normalize supplementary sequences with same scale as x
+        x_supp_prime = tuple(self._normalize(xx, min_, max_) for xx in x_supp)
+
+        return x_prime, x_supp_prime, kwargs
 
     def untransform(self, x, *args, **kwargs):
-        if torch.is_tensor(kwargs['min_sample']):
-            min_sample = kwargs['min_sample'].detach().cpu().numpy()
-            max_sample = kwargs['max_sample'].detach().cpu().numpy()
-        else:
-            min_sample = kwargs['min_sample']
-            max_sample = kwargs['max_sample']
+        """
+        Inverse normalization: map [-1, 1] back to original coordinate range.
+        Args:   x:      (T, J, 3) or (B, T, J, 3)
+                kwargs: must contain 'min_sample' (3,) and 'max_sample' (3,)
+                    as numpy arrays or torch tensors
+        Returns: reconstructed array, same shape as x
+        """
+        min_sample = kwargs['min_sample']
+        max_sample = kwargs['max_sample']
 
-        if len(x.shape) == 3:  # time, keypoints, 3D or 2D
+        # Handle torch tensors
+        if hasattr(min_sample, 'detach'):
+            min_sample = min_sample.detach().cpu().numpy()
+        if hasattr(max_sample, 'detach'):
+            max_sample = max_sample.detach().cpu().numpy()
 
-            min_tiled = np.tile(np.tile(min_sample, x.shape[1]), x.shape[0]).reshape(x.shape)
-            max_tiled = np.tile(np.tile(max_sample, x.shape[1]), x.shape[0]).reshape(x.shape)
+        min_sample = np.array(min_sample).reshape(3)  # ensure (3,)
+        max_sample = np.array(max_sample).reshape(3)
 
-        elif len(x.shape) == 4:  # batch, time, keypoints, 2D or 3D
-            min_tiled = np.tile(np.tile(min_sample, x.shape[2]), x.shape[1]).reshape(x.shape)
-            max_tiled = np.tile(np.tile(max_sample, x.shape[2]), x.shape[1]).reshape(x.shape)
-        else:
-            raise ValueError
+        if len(x.shape) not in (3, 4):
+            raise ValueError(f"[Normalize.untransform] Expected 3D (T,J,3) or 4D (B,T,J,3) "
+                             f"input, got shape {x.shape}")
 
-        reconstructed = min_tiled + (max_tiled - min_tiled) * (1 + x) / 2
-
-        return reconstructed
-
-
-
-
-class AddMissing_LengthProba(Transform):
-    ### FR - 2022-06-07:
-    ### should be first transform, it is not checked automatically though
-    ### this is implemented as a transform because
-    ### - it needs to be applied first before other normlization to  not leak data through the normalization
-    ### - it needs to be applied differently for each sample at each epoch
-
-    def __init__(self, length_proba_df, list_keypoints, init_proba_df, indep_keypoints=True, proba_n_missing=None, pad=(0, 0),
-                 **kwargs):
-        self.length_proba_df = length_proba_df
-        self.init_proba_df = init_proba_df
-        self.list_keypoints = list_keypoints
-        self.pad_before = max(int(pad[0]), 0)  # if 0, means we can alter all time points, if > 0 gives the number of frames untouched at the beginning and end
-        self.pad_after = max(int(pad[1]), 0)  # if 0, means we can alter all time points, if > 0 gives the number of frames untouched at the beginning and end
-        self.proba_n_missing = proba_n_missing
-        self.indep_keypoints = indep_keypoints
-        self.cumsum_proba_n_missing = np.cumsum(self.proba_n_missing)
-
-        super().__init__(**kwargs)
-
-    def __call__(self, x, *args, verbose_sample=False, **kwargs):
-        # x of shape (time points, keypoints, 3 or 4)
-        x_with_holes = np.array(x)
-
-        if np.max(np.sum(np.any(np.isnan(x), axis=2), axis=1)) > 0:
-            if self.verbose == 2 or verbose_sample:
-                print('[AddMissing Transform] There is already a missing keypoint in the sequence. Not adding more')
-        else:
-            # missing value place holder
-            missing_values_placeholder = np.nan
-            # while not np.any(np.sum(np.isnan(x_with_holes), axis=(1, 2))):
-            # for now only one hole per sample
-            if self.proba_n_missing is None:
-                n_missing = 1
-            else:
-                n_missing = np.where(np.random.rand() <= self.cumsum_proba_n_missing)[0][0] + 1
-
-            if not self.indep_keypoints:
-                ## in the proba file there should be probability of missing sets of keypoints
-                ## so we don't draw missing keypoint one by one but directly a set
-                ## this should be activated only when more than 1 keypoint is missing at a time
-
-                buffer = int(self.pad_before)
-                while buffer < x.shape[0] - self.pad_after:
-                    ## choose id of missing keypoints
-                    rd_kp = np.random.choice(a=self.init_proba_df['keypoint'],
-                                             size=1,
-                                             p=self.init_proba_df['proba'].values,
-                                             replace=False)[0]
-
-                    ## choose length for the keypoint set
-                    length_df = self.length_proba_df.loc[self.length_proba_df['keypoint'] == rd_kp, :].sample(n=1, weights='proba')
-                    length_input = length_df['length'].values[0]
-                    ## verify it's not too long
-                    length_input = min(length_input, x.shape[0] - buffer - self.pad_after)
-
-                    ## chosen first index indep per keypoint
-                    inter_lengths = np.fmin(self.length_proba_df.loc[self.length_proba_df['keypoint'] == 'non_missing', :].sample(n=1, weights='proba')['length'].values[0],
-                                            x.shape[0] - self.pad_after - length_input - buffer)
-
-                    start_missing = buffer + inter_lengths
-                    end_missing = start_missing + length_input
-                    buffer = end_missing
-
-                    for missing_kp_index in rd_kp.split(' '):
-                        x_with_holes[start_missing: end_missing, self.list_keypoints.index(missing_kp_index), :] = missing_values_placeholder
-
-            else:
-                # all the keypoints are considered independent
-                buffer = self.pad_before
-                while buffer < x.shape[0] - self.pad_after:
-
-                    ## choose id of missing keypoints
-                    rd_kp = np.random.choice(a=self.init_proba_df['keypoint'],
-                                             size=n_missing,
-                                             p=self.init_proba_df['proba'].values,
-                                             replace=False)  # shape: n_missing
-
-                    ## choose length per keypoint
-                    length_df = self.length_proba_df.groupby('keypoint').sample(n=1, weights='proba')
-                    length_input = np.random.choice(length_df.loc[length_df['keypoint'].isin(rd_kp), 'length'].values, 1)[0]
-                    ## verify it's not too long
-                    lengths = np.fmin(length_input, x.shape[0] - buffer - self.pad_after)  # shape: n_missing
-
-                    ## chosen first index indep per keypoint
-                    inter_lengths = np.fmin(length_df.loc[length_df['keypoint'] == 'non_missing', 'length'].values,
-                                            x.shape[0] - self.pad_after - buffer - lengths)[0]
-
-                    start_missing = buffer + inter_lengths
-                    end_missing = start_missing + lengths
-                    buffer = int(end_missing)
-
-                    if len(rd_kp) > 1:
-                        index_rd_kp = np.array([self.list_keypoints.index(k) for k in rd_kp])
-                    else:
-                        index_rd_kp = self.list_keypoints.index(rd_kp)
-                    x_with_holes[start_missing: end_missing, index_rd_kp, :] = missing_values_placeholder
-
-            if self.verbose == 2 or verbose_sample:
-                print("nb of missing kp:", np.sum(np.sum(np.any(np.isnan(x_with_holes), axis=2), axis=0) > 0))
-            v = np.sum(np.isnan(x_with_holes[..., 0]))
-            if v == 0:
-                print("nb of missing values:", v)
-
-        return x_with_holes
-
-
-def transform_x(x, transformations, **kwargs):
-    '''
-
-    :param x: can have nan in the places where coordinates is missing
-    :param transformations:
-    :param kwargs:
-    :return:
-    '''
-    if isinstance(transformations[0], AddMissing_LengthProba):
-        x_supp = (np.copy(x),)  # the supp sample is the one without holes, but other reflection, normalization, ...
-        # will be computed on x and applied both on x_gt and x
-        x = transformations[0](x, **kwargs)  # the main sample is the one with holes
-        # in the case, where no hole is added, x is original x, and x_gt is None
-    else:
-        x_supp = ()
-        x = transformations[0](x, **kwargs)
-
-    for t in transformations[1:]:
-        if isinstance(t, Swap2Kp):
-            x, x_supp, kwargs = t(x, x_supp=x_supp, **kwargs)
-        else:
-            x, x_supp, kwargs = t(x, x_supp=x_supp, **kwargs)
-
-    return x, x_supp, kwargs
-
-
-def reconstruct_before_normalization(data, data_dict, transforms):
-
-    for transform in transforms[::-1]:
-        if isinstance(transform, AddMissing_LengthProba):
-            continue
-        data = transform.untransform(data, **data_dict)
-    return data
+        # min_sample shape (3,) broadcasts naturally over (..., 3)
+        return self._unnormalize(np.array(x), min_sample, max_sample)

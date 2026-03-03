@@ -6,177 +6,25 @@ import scipy.io
 import pandas as pd
 import pickle
 import h5py
-
 import logging
-# import hydra
-# from omegaconf import DictConfig
-
-def compute_barycenter(points):
-    """
-    It is better if the head components, knees and ankles are removed
-    :args points: numpy array (keypoints, 3D). Should be hip, coord and back to approximate the plane of the mouse back
-    :returns: barycenter of given points (3D)
-    """
-    if len(points) > 0:
-        return np.nanmean(points, axis=0)
-    else:
-        return np.nan
-
 
 
 def compute_svd(points):
     """
-    :args points: numpy array (keypoints, 3D). Should be hip, coord and back. so we approximate the plane of the mouse back 
-    :returns: barycenter coordinates (numpy array of 3 elements)
-              transition matrix (3, 3), 
-              both can be in transform_points 
+    :args 
+        points: (n_keypoints, 3D) numpy array. Should be hip, coord and back to approximate the plane of the mouse back.
+    :returns: 
+        barycenter: (3,) numpy array — mean position of valid points
+        transition matrix: (3, 3), both can be in transform_points 
     """
     points = points[~np.any(np.isnan(points), axis=1)]
-    if len(points) > 0:
-        svd = np.linalg.svd((points - np.mean(points, axis=0)).T)
-        barycenter = compute_barycenter(points)
-        return barycenter, svd[0]
-        
-    else:
+    if len(points) == 0:
         return np.nan, np.nan
 
-
-def transform_svd_points(points, barycenter, A):
-    """
-    Convert the coordinates in the new base formed by the barycenter and the transition matrix
-    """
-    return np.dot(A, (points - barycenter).T).T
-
-
-
-
-
-
-
-def rotation_matrix_z(angle):
-    """Rotation matrix around Z-axis (yaw, in XY plane)."""
-    c, s = np.cos(angle), np.sin(angle)
-    return np.array([
-        [c, -s, 0],
-        [s,  c, 0],
-        [0,  0, 1]
-    ], dtype=np.float64)
-
-
-
-def is_climbing(joints, vertical_threshold=0.7):
-    """
-    Detect if pose is a climbing pose by checking how vertical the spine is.
-    Args:
-        joints: (J, 3) single frame
-        vertical_threshold: if the 1st SVD vector's Z component exceeds this, consider it climbing
-    Returns:
-        bool
-    """
-    j = joints - joints.mean(axis=0)
-    _, _, Vt = np.linalg.svd(j)
-    spine_axis = Vt[0]  # dominant direction
-    verticality = abs(spine_axis[2])  # how much it points along Z
-    return verticality > vertical_threshold
-
-
-def align_skeleton_frame(joints, climbing, head_idx=0, tail_idx=-1):
-    """
-    Canonicalize a single frame to be view-invariant.
+    barycenter = np.mean(points, axis=0)
+    _, _, Vt = np.linalg.svd(points - barycenter)
+    return barycenter, Vt.T
     
-    Steps:
-      1. Center on centroid
-      2. SVD to find body axes
-      3. Choose Vt[0] (normal) or Vt[2] (climbing) for XY alignment
-      4. Rotate so body axis aligns with +X (y=0 plane)
-      5. Ensure head faces +X
-
-    Args:
-        joints:   (J, 3) joint positions
-        climbing: bool — use Vt[2] instead of Vt[0] for XY alignment
-        head_idx: joint index of the head/nose
-        tail_idx: joint index of the tail base
-    Returns:
-        (J, 3) canonicalized joints
-    """
-    # 1. Center
-    center = joints.mean(axis=0)
-    j = joints - center
-
-    # 2. SVD on centered joints
-    _, _, Vt = np.linalg.svd(j)
-    # Vt[0]: along spine (max variance)
-    # Vt[1]: side-to-side
-    # Vt[2]: perpendicular to back (dorsal axis)
-
-    # 3. Choose alignment axis
-    if climbing:
-        # Spine is nearly vertical → Vt[0] has tiny XY component → unstable
-        # Vt[2] (perpendicular to back) lies in/near XY plane → stable
-        xy_axis = Vt[2]
-    else:
-        # Spine is mostly horizontal → Vt[0] has large XY component → stable
-        xy_axis = Vt[0]
-
-    # 4. Project chosen axis onto XY and compute rotation angle to align with +X
-    angle = np.arctan2(xy_axis[1], xy_axis[0])
-    R = rotation_matrix_z(-angle)
-    j = j @ R.T  # (J, 3)
-
-    # 5. Ensure head faces +X (not -X); flip 180° in XY if needed
-    if j[head_idx, 0] < j[tail_idx, 0]:
-        # Head is at lower X than tail → facing wrong way → flip
-        j[:, 0] *= -1  # mirror X
-        j[:, 1] *= -1  # mirror Y (full 180° rotation in XY)
-
-    return j
-
-
-def view_invariant_transform(
-    sequence,
-    head_idx=0,
-    tail_idx=-1,
-    vertical_threshold=0.7,
-    auto_detect_climbing=True,
-    force_climbing=False,
-):
-    """
-    Full view-invariant transform for a 3D mouse skeleton sequence.
-
-    Args:
-        sequence:             (T, J, 3) — time steps, joints, xyz
-        head_idx:             joint index for head/nose
-        tail_idx:             joint index for tail base
-        vertical_threshold:   threshold for auto-detecting climbing pose
-        auto_detect_climbing: if True, detect climbing per-frame automatically
-        force_climbing:       if True, always use climbing mode (Vt[2])
-    Returns:
-        canonical: (T, J, 3) — view-invariant sequence
-        climbing_flags: (T,) bool array — which frames were treated as climbing
-    """
-    T, J, _ = sequence.shape
-    canonical = np.zeros_like(sequence)
-    climbing_flags = np.zeros(T, dtype=bool)
-
-    for t in range(T):
-        joints = sequence[t]  # (J, 3)
-
-        # Determine mode
-        if force_climbing:
-            climbing = True
-        elif auto_detect_climbing:
-            climbing = is_climbing(joints, vertical_threshold)
-        else:
-            climbing = False
-
-        climbing_flags[t] = climbing
-        canonical[t] = align_skeleton_frame(
-            joints, climbing, head_idx=head_idx, tail_idx=tail_idx
-        )
-
-    return canonical, climbing_flags
-
-
 
 
 
