@@ -8,7 +8,7 @@ import pickle
 import h5py
 import logging
 
-
+from .transform import ViewInvariant, Normalize
 
 
 
@@ -73,7 +73,7 @@ class PreprocessPipeline:
             seq_keypoints.append(pad_vec)
             keypoints_ids.extend([(seq_ix, i) for i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])
 
-        seq_keypoints = np.array(seq_keypoints, dtype=np.float32)
+        #seq_keypoints = np.array(seq_keypoints, dtype=np.float32)
         self.seq_keypoints = seq_keypoints #numpy array: [num_sequences, T/5 + pad_vect, 10, 3]
         self.keypoints_ids = keypoints_ids
 
@@ -106,7 +106,7 @@ class PreprocessPipeline:
     def run(self):
         data = []
         for subseq_ix in self.keypoints_ids:
-            subsequence = self.seq_keypoints[subseq_ix[0], subseq_ix[1] : subseq_ix[1] + self.max_keypoints_len]
+            subsequence = self.seq_keypoints[subseq_ix[0]][subseq_ix[1] : subseq_ix[1] + self.max_keypoints_len]
             feats, _ = self.transform(subsequence)
             data.append(feats)
         

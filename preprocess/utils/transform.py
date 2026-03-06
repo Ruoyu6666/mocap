@@ -7,6 +7,7 @@ import logging
 
 
 
+
 def compute_svd(points):
     """
     points: (n_keypoints=3, 3) numpy array. Should be hip, coord and back to approximate the plane of the mouse back.
@@ -106,29 +107,25 @@ class ViewInvariant:
         """
         # 0. Define essential joints for computing barycenter
         ESSENTIAL_JOINTS = [1, 2, 3, 6, 7, 8]
-        def frame_has_essential(frame_points):
-            """True if at least one essential joint is fully valid (no NaN)."""
-            for j in ESSENTIAL_JOINTS:
-                if not np.any(np.isnan(frame_points[j])):  # all 3 coords valid
-                    return True
-            return False
+        valid_essential = np.array([
+                np.sum([
+                    not np.any(np.isnan(x[t, j]))
+                    for j in ESSENTIAL_JOINTS
+                ])
+                for t in range(x.shape[0])
+            ])                                           # (T,)
 
-        # 1. Initial reference frame
-        idx    = min(self.index_frame, x.shape[0] - 1)
-        points = x[idx]                             # (J, 3) 
-        if not frame_has_essential(points):
-            valid = [t for t in range(x.shape[0]) if frame_has_essential(x[t])]
-            if len(valid) == 0:
-                raise ValueError("[ViewInvariant] No frame found where at least one of joints "
-                                f"{[j+1 for j in ESSENTIAL_JOINTS]} is valid.")
-            
-            nan_per_frame = np.sum(np.isnan(x), axis=(1, 2))  # (T,)
-            idx     = int(np.argmin(nan_per_frame))     # use frame with fewest NaN joints
-            # valid  = np.array(valid)
-            points = x[idx]
+        if np.max(valid_essential) == 0:
+            raise ValueError(
+                "[ViewInvariant] No frame found where at least one of joints "
+                f"{[j+1 for j in ESSENTIAL_JOINTS]} is valid."
+            )
+
+        idx    = int(np.argmax(valid_essential))     # frame with most valid essentials
+        points = x[idx]                            # (J, 3) 
+
         
         mask_na = np.any(np.isnan(points), axis=1) # checks per joint whether any of its 3 coordinates is NaN.
-
         # Final guard: need at least 2 valid joints for SVD to be meaningful
         n_valid = np.sum(~mask_na)
         if n_valid < 2:
