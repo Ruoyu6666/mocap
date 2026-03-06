@@ -15,7 +15,6 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
     Primary Pose Trajectory (+Features) dataset.
     """
 
-    DEFAULT_FRAME_RATE = None
     DEFAULT_GRID_SIZE = None
     NUM_INDIVIDUALS = None
     NUM_KEYPOINTS = None
@@ -55,7 +54,7 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
         self.n_frames = None
 
         self.max_keypoints_len = num_frames
-        self.max_seq_length = num_frames
+        #self.max_seq_length = num_frames
         self.sliding_window = sliding_window
 
         self.augmentations = None
@@ -68,7 +67,7 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
         return {
             "path": self.path,
             "frame_rate": self.frame_rate,
-            "sample_frequency": self.sample_frequency,
+            "sample_frequency": self._sampling_rate,
             "flatten": self.flatten,
             "scale": self.scale,
         }

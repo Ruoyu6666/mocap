@@ -9,22 +9,117 @@ import h5py
 import logging
 
 
-def compute_svd(points):
-    """
-    :args 
-        points: (n_keypoints, 3D) numpy array. Should be hip, coord and back to approximate the plane of the mouse back.
-    :returns: 
-        barycenter: (3,) numpy array — mean position of valid points
-        transition matrix: (3, 3), both can be in transform_points 
-    """
-    points = points[~np.any(np.isnan(points), axis=1)]
-    if len(points) == 0:
-        return np.nan, np.nan
 
-    barycenter = np.mean(points, axis=0)
-    _, _, Vt = np.linalg.svd(points - barycenter)
-    return barycenter, Vt.T
+
+
+class PreprocessPipeline:
+
+    NUM_KEYPOINTS = 10
+    KPTS_DIMENSIONS = 3
+
+    def __init__(self,
+                path_to_data,
+                left_idx        = 3,       # default left hip
+                right_idx       = 8,       # default right hip
+                sampling_rate   = 5,
+                num_frames      = 300,
+                sliding_window  = 150,
+                index_frame     = 149,      # int(length_input_seq / 2)
+                normalizer      = 'normal', # 'cube' or 'normal'
+        ):
+        self.path_to_data  = path_to_data
+        self.left_idx      = left_idx
+        self.right_idx     = right_idx
+
+        self._sampling_rate = sampling_rate
+        self.max_keypoints_len = num_frames
+        self.sliding_window = sliding_window
+        self.index_frame   = index_frame
+
+        self.vi   = ViewInvariant(index_frame = index_frame, left_idx = left_idx, right_idx = right_idx,)
+        self.norm = Normalize() if normalizer == 'normal' else NormalizeCube()
+
+        self.load()
+        self.sample()
+
+    def __str__(self):
+        return (f'SkeletonPreprocessingPipeline('
+                f'subseq_len={self.max_keypoints_len}, '
+                f'sliding_window={self.sliding_window}, ')
+
     
+    # Step 0: load raw data
+    def load(self):
+        filepath = self.path_to_data
+        if not filepath.exists():
+            raise FileNotFoundError(f"[Pipeline] File not found: {filepath}")
+
+        with open(filepath, 'rb') as file:  # Read pickle file 
+            self.raw_data = pickle.load(file)
+        
+
+    # Step 1: Sample 1/5 frames & Prepare for subsequences extraction 
+    def sample(self):
+        seq_keypoints = []
+        keypoints_ids = []
+        sub_seq_length = self.max_keypoints_len
+        
+        for seq_ix, (seq_name, sequence) in enumerate(self.raw_data.items()):
+            vec_seq = sequence["data"]
+            vec_seq = vec_seq.reshape(-1, self._sampling_rate, self.NUM_KEYPOINTS, self.KPTS_DIMENSIONS).transpose(1, 0, 2, 3)[0]   # [T/5, 10, 3]
+
+            # Pads the beginning and end of the sequence with duplicate frames
+            pad_vec = np.pad(vec_seq, ((sub_seq_length// 2, sub_seq_length - sub_seq_length // 2), (0, 0), (0, 0)), mode="edge", )
+            seq_keypoints.append(pad_vec)
+            keypoints_ids.extend([(seq_ix, i) for i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])
+
+        seq_keypoints = np.array(seq_keypoints, dtype=np.float32)
+        self.seq_keypoints = seq_keypoints #numpy array: [num_sequences, T/5 + pad_vect, 10, 3]
+        self.keypoints_ids = keypoints_ids
+
+        del self.raw_data
+    
+
+    # Step 2: Apply ViewInvariant → Normalize to a single subsequence.  
+    def transform(self, seq):
+        """
+        Args:       seq: (subseq_len, J, 3)
+        Returns:    processed: (subseq_len, J, 3)
+                    metadata:  dict — VI_angle, VI_barycenter, min_sample, max_sample
+        """
+        kwargs = {}
+        seq, _, kwargs = self.vi(seq,   x_supp=(), **kwargs)
+        seq, _, kwargs = self.norm(seq, x_supp=(), **kwargs)
+        return seq, kwargs
+
+    def untransform(self, seq, metadata):
+        """Invert the full pipeline: Normalize⁻¹ → ViewInvariant⁻¹.
+        Args:       seq:      (subseq_len, J, 3)
+                    metadata: dict returned by transform()
+        Returns:    (subseq_len, J, 3) in original coordinate space
+        """
+        seq = self.norm.untransform(seq, **metadata)
+        seq = self.vi.untransform(seq,   **metadata)
+        return seq
+    
+    #  Run
+    def run(self):
+        data = []
+        for subseq_ix in self.keypoints_ids:
+            subsequence = self.seq_keypoints[subseq_ix[0], subseq_ix[1] : subseq_ix[1] + self.max_keypoints_len]
+            feats, _ = self.transform(subsequence)
+            data.append(feats)
+        
+        data = np.array(data, dtype=np.float32)
+        # Write data to local
+        dir_name, file_name = os.path.split(self.path_to_data)# Split directory and filename
+        name, ext = os.path.splitext(file_name)               # Split filename and extension
+        new_file_name = f"{name}_processed{ext}"              # Create new filename
+        output_path = os.path.join(dir_name, new_file_name)   # Build new path
+
+
+        with open(output_path, 'wb') as file:
+            pickle.dump(data, file)
 
 
 

@@ -14,8 +14,6 @@ from .pose_traj_dataset import BasePoseTrajDataset
 
 class MocapDataset(BasePoseTrajDataset):
     """Primary Mouse (+Features) dataset."""
-
-    #DEFAULT_FRAME_RATE = 60
     #DEFAULT_GRID_SIZE = 850
     NUM_INDIVIDUALS = 1
     NUM_KEYPOINTS = 10
@@ -37,12 +35,10 @@ class MocapDataset(BasePoseTrajDataset):
         datasets: List[str]: ["CP1A", "CP1B", "INH1", "INH2"], 
         scale: bool = True,
         sampling_rate: int = 1,
-        num_frames: int = 80,
-        sliding_window: int = 1,
+        num_frames: int = 300,
+        sliding_window: int = 149,
         fill_holes: bool = False,
         augmentations: transforms.Compose = None,
-        centeralign: bool = False,
-        include_testdata: bool = False,
         **kwargs
     ):
 
@@ -56,7 +52,6 @@ class MocapDataset(BasePoseTrajDataset):
             **kwargs
         )
 
-        # self.sample_frequency = self.DEFAULT_FRAME_RATE  # downsample frames if needed
         self.mode = mode
         self.centeralign = centeralign
         if augmentations:
@@ -78,11 +73,11 @@ class MocapDataset(BasePoseTrajDataset):
     def load_data(self):
         self.raw_data = []
         for data_name in datasets: 
-            with open(os.path.join(self.path, "mouse_triplet_test.npy"), 'rb') as file:
-                self.raw_data = pickle.load(file)
-        #self.raw_data = np.load(os.path.join(self.path, "mouse_triplet_test.npy"), allow_pickle=True).item()
+            with open(os.path.join(self.path, dataset_name), 'rb') as file:
+                self.raw_data.append(pickle.load(file))
 
     def preprocess(self):
+        # data already processed
         pass
     
     def featurise_keypoints(self, keypoints):

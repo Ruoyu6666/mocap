@@ -14,7 +14,6 @@ from .pose_traj_dataset import BasePoseTrajDataset
 class MABeMouseDataset(BasePoseTrajDataset):
     """Primary Mouse (+Features) dataset."""
 
-    DEFAULT_FRAME_RATE = 30
     DEFAULT_GRID_SIZE = 850
     NUM_INDIVIDUALS = 3
     NUM_KEYPOINTS = 12
@@ -38,18 +37,8 @@ class MABeMouseDataset(BasePoseTrajDataset):
     TAIL_MIDDLE = "tail_middle"
     TAIL_TIP = "tail_tip"
     STR_BODY_PARTS = [
-        NOSE,
-        EAR_LEFT,
-        EAR_RIGHT,
-        NECK,
-        FOREPAW_LEFT,
-        FOREPAW_RIGHT,
-        CENTER,
-        HINDPAW_LEFT,
-        HINDPAW_RIGHT,
-        TAIL_BASE,
-        TAIL_MIDDLE,
-        TAIL_TIP,
+        NOSE, EAR_LEFT, EAR_RIGHT, NECK, FOREPAW_LEFT, FOREPAW_RIGHT,
+        CENTER, HINDPAW_LEFT, HINDPAW_RIGHT, TAIL_BASE, TAIL_MIDDLE, TAIL_TIP,
     ]
     BODY_PART_2_INDEX = {w: i for i, w in enumerate(STR_BODY_PARTS)}
 
@@ -77,7 +66,7 @@ class MABeMouseDataset(BasePoseTrajDataset):
             fill_holes,
             **kwargs
         )
-        self.sample_frequency = self.DEFAULT_FRAME_RATE  # downsample frames if needed
+        
         self.mode = mode
         self.centeralign = centeralign
         if augmentations:
