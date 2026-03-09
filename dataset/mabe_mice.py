@@ -8,7 +8,7 @@ import torch
 from torchvision import transforms
 
 from .augmentations import GaussianNoise, Reflect, Rotation
-from .pose_traj_dataset import BasePoseTrajDataset
+from .datasets import BasePoseTrajDataset
 
 
 class MABeMouseDataset(BasePoseTrajDataset):
