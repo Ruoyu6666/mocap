@@ -83,13 +83,13 @@ M9_MC3	s6	A1		 s12	B		s18	C			s24	D			s30	E		s36	C*		s38	D*		s40	A2
 M10_MC3	s7	E		 s13	A2		s19	B			s25	C			s31	D		s37	D*		s39	A1		s41	A1*
 
 
-	TREATMENT				DOSE [mg/kg]	CONCENTRATION [mg/ml]		INJ VOLUME
+	TREATMENT		DOSE [mg/kg]	CONCENTRATION [mg/ml]		INJ VOLUME
 A	VEHICLE 1:1:18, etOH:colliphor:saline							0			
-B	CP55,940				0.3		0.03			normal volume	10 ml/kg
-C	PF3845					30		3				normal volume	10 ml/kg
-D	MJN110					2.5		0.25			normal volume	10 ml/kg
-E	Harmaline				20		1				double volume	20 ml/ml
-								
+B	CP55,940		0.3				0.03			normal volume	10 ml/kg
+C	PF3845			30				3				normal volume	10 ml/kg
+D	MJN110			2.5				0.25			normal volume	10 ml/kg
+E	Harmaline		20				1				double volume	20 ml/kg
+							
 								
 				
 Filename example							

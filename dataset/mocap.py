@@ -26,7 +26,6 @@ class MocapDataset(torch.utils.data.Dataset):
     BODY_PART_2_INDEX = {w: i for i, w in enumerate(STR_BODY_PARTS)}
 
     def __init__(self,
-                mode: str,
                 path_to_data_dir: Path,
                 datasets: List[str] | None = None, # ["CP1A", "CP1B", "INH1", "INH2"],
                 sampling_rate: int = 1,
@@ -36,8 +35,6 @@ class MocapDataset(torch.utils.data.Dataset):
                 augmentations: transforms.Compose = None,
                 **kwargs
     ):
-
-        self.mode = mode
         self.path_to_data_dir = path_to_data_dir
         self.datasets = ["CP1A","CP1B","INH1","INH2"]
 
@@ -76,5 +73,5 @@ class MocapDataset(torch.utils.data.Dataset):
         #print(sum(np.isnan(input)))
         input =  torch.tensor(input, dtype=torch.float32)
         input = torch.unsqueeze(input, axis=1)
-        #print(input)
+        
         return input, []

@@ -8,9 +8,44 @@ import pickle
 import h5py
 import logging
 
-from .transform import ViewInvariant, Normalize
+from .transform import ViewInvariant, Normalize, NormalizeCube
 
 
+label_map = {
+    "CP1A":{
+        "A": {"drug":"V", "concentration":0},
+        "B": {"drug":"CP", "concentration":0.03},
+        "C": {"drug":"CP", "concentration":0.01},
+        "D": {"drug":"CP", "concentration":0.3},
+    },
+    "CP1B":{
+        "A": {"drug":"V", "concentration":0},
+        "B": {"drug":"CP", "concentration":0.03},
+        "C": {"drug":"CP", "concentration":0.01},
+        "D": {"drug":"CP", "concentration":0.3},
+    }, 
+    "INH1":{
+        "A": {"drug":"V", "concentration":0},
+        "B": {"drug":"PF", "concentration":30},
+        "C": {"drug":"MJ", "concentration":2.5},
+    },
+    "INH2":{
+        "A": {"drug":"V", "concentration":0},
+        "B": {"drug":"AM", "concentration":3},
+        "C": {"drug":"PF", "concentration":10},
+        "D": {"drug":"MJ", "concentration":1.25},
+        "E": {"drug":"AMPF", "concentration":[3, 10]},
+        "F": {"drug":"AMMJ", "concentration":[3, 1.25]},
+    }, 
+    "MOS1aD":{
+        "1": {"drug":"V", "concentration":0},
+        "2": {"drug":"V", "concentration":0},
+        "B": {"drug":"CP", "concentration":0.3},
+        "C": {"drug":"PF", "concentration":30},
+        "D": {"drug":"MJ", "concentration":2.5},
+        "E": {"drug":"H", "concentration":20},
+    }
+}
 
 class PreprocessPipeline:
 
@@ -19,6 +54,7 @@ class PreprocessPipeline:
 
     def __init__(self,
                 path_to_data,
+                task            = "CLB",
                 left_idx        = 3,       # default left hip
                 right_idx       = 8,       # default right hip
                 sampling_rate   = 5,
@@ -27,6 +63,7 @@ class PreprocessPipeline:
                 index_frame     = 149,      # int(length_input_seq / 2)
                 normalizer      = 'normal', # 'cube' or 'normal'
         ):
+        self.task = task
         self.path_to_data  = path_to_data
         self.left_idx      = left_idx
         self.right_idx     = right_idx
@@ -58,13 +95,16 @@ class PreprocessPipeline:
             self.raw_data = pickle.load(file)
         
 
-    # Step 1: Sample 1/5 frames & Prepare for subsequences extraction 
+    # Step 1: Sample 1/5 frames & Prepare subsequences Ids 
     def sample(self):
         seq_keypoints = []
         keypoints_ids = []
         sub_seq_length = self.max_keypoints_len
+        self.labels = []
         
         for seq_ix, (seq_name, sequence) in enumerate(self.raw_data.items()):
+            self.labels.append(sequence["label"])
+
             vec_seq = sequence["data"]
             vec_seq = vec_seq.reshape(-1, self._sampling_rate, self.NUM_KEYPOINTS, self.KPTS_DIMENSIONS).transpose(1, 0, 2, 3)[0]   # [T/5, 10, 3]
 
@@ -72,7 +112,7 @@ class PreprocessPipeline:
             pad_vec = np.pad(vec_seq, ((sub_seq_length// 2, sub_seq_length - sub_seq_length // 2), (0, 0), (0, 0)), mode="edge", )
             seq_keypoints.append(pad_vec)
             keypoints_ids.extend([(seq_ix, i) for i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])
-
+            
         #seq_keypoints = np.array(seq_keypoints, dtype=np.float32)
         self.seq_keypoints = seq_keypoints #numpy array: [num_sequences, T/5 + pad_vect, 10, 3]
         self.keypoints_ids = keypoints_ids
@@ -105,21 +145,33 @@ class PreprocessPipeline:
     #  Run
     def run(self):
         data = []
+        self.drug_label = []
+        self.concentration_label = []
+        dir_name, file_name = os.path.split(self.path_to_data)# Split directory and filename
+        name, ext = os.path.splitext(file_name)               # Split filename and extension: CP1A, pkl
+        label_map_data = label_map[name[:-4]]
+
         for subseq_ix in self.keypoints_ids:
             subsequence = self.seq_keypoints[subseq_ix[0]][subseq_ix[1] : subseq_ix[1] + self.max_keypoints_len]
             feats, _ = self.transform(subsequence)
             data.append(feats)
+
+            label = label_map_data[self.labels[subseq_ix[0]]]
+            self.drug_label.append(label["drug"])
+            self.concentration_label.append(label["concentration"])
         
         data = np.array(data, dtype=np.float32)
         # Write data to local
-        dir_name, file_name = os.path.split(self.path_to_data)# Split directory and filename
-        name, ext = os.path.splitext(file_name)               # Split filename and extension
+        processed_data = {
+            "data":data,
+            "drug": self.drug_label,
+            "concentration": self.concentration_label
+        }
         new_file_name = f"{name}_processed{ext}"              # Create new filename
         output_path = os.path.join(dir_name, new_file_name)   # Build new path
 
-
         with open(output_path, 'wb') as file:
-            pickle.dump(data, file)
+            pickle.dump(processed_data, file)
 
 
 

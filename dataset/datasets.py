@@ -30,7 +30,6 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
     def __init__(
         self,
         path_to_data_dir: Path,
-        scale: bool = True,
         sampling_rate: int = 1,
         num_frames: int = 80,
         sliding_window: int = 1,
@@ -41,7 +40,6 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
     ):
 
         self.path = path_to_data_dir
-        self.scale = scale
 
         # defined if data has been loaded
         self.has_annotations = None

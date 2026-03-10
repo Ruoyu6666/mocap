@@ -87,11 +87,9 @@ class HBehaveMAE(GeneralizedHiera):
         )
 
         self.decoder_blocks = nn.ModuleList(
-            [
-                HieraBlock(dim=decoder_embed_dim, dim_out=decoder_embed_dim,
-                           heads=decoder_num_heads, norm_layer=norm_layer, mlp_ratio=mlp_ratio,
-                ) for i in range(decoder_depth)
-            ]
+            [HieraBlock(dim=decoder_embed_dim, dim_out=decoder_embed_dim,
+                        heads=decoder_num_heads, norm_layer=norm_layer, mlp_ratio=mlp_ratio,
+                        ) for i in range(decoder_depth)]
         )
         self.decoder_norm = norm_layer(decoder_embed_dim)
 
@@ -174,7 +172,7 @@ class HBehaveMAE(GeneralizedHiera):
     def forward_encoder(self, x: torch.Tensor, mask_ratio: float, mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         
         if mask is None:
-            mask = self.get_random_mask(x, mask_ratio)  # [B, #MUs_all] x:[768, 1, 900, 3, 24], mask [768, 60]
+            mask = self.get_random_mask(x, mask_ratio)  # [B, #MUs_all] x:[768, 1, 900, 3, 24], mask [B, 60]
 
         # Get multi-scale representations from encoder
         _, intermediates = super().forward(x, mask, return_intermediates=True)
@@ -190,7 +188,7 @@ class HBehaveMAE(GeneralizedHiera):
                 x += apply_fusion_head(head, interm_x)
         x = self.encoder_norm(x)
 
-        return x, mask
+        return x, mask  # mask [128, 20]
 
 
     def forward_decoder(self, x: torch.Tensor, mask: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -208,16 +206,12 @@ class HBehaveMAE(GeneralizedHiera):
         x_dec = ~mask * mask_tokens + mask * x_dec
 
         # Get back spatial order
-        x = undo_windowing(
-            x_dec,
-            self.tokens_spatial_shape_final,
-            self.mask_unit_spatial_shape_final,
-        )
-        mask = undo_windowing(
-            mask[..., 0:1],
-            self.tokens_spatial_shape_final,
-            self.mask_unit_spatial_shape_final,
-        )
+        x = undo_windowing(x_dec,
+                           self.tokens_spatial_shape_final,
+                           self.mask_unit_spatial_shape_final,)
+        mask = undo_windowing(mask[..., 0:1],
+                              self.tokens_spatial_shape_final,
+                              self.mask_unit_spatial_shape_final,)
         # Flatten
         x = x.reshape(x.shape[0], -1, x.shape[-1])
         mask = mask.view(x.shape[0], -1)
@@ -233,7 +227,7 @@ class HBehaveMAE(GeneralizedHiera):
         # Predictor projection
         x = self.decoder_pred(x)
 
-        return x, mask
+        return x, mask # mask [128, 20]
 
 
     def forward_loss(self, x: torch.Tensor, pred: torch.Tensor, mask: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -251,7 +245,6 @@ class HBehaveMAE(GeneralizedHiera):
         pred = pred[mask]
         # MSE loss
         
-        print(pred)
         loss = (pred - label) ** 2
 
         return loss.mean(), pred, label, None
@@ -261,6 +254,11 @@ class HBehaveMAE(GeneralizedHiera):
         mask_ratio: float = 0.6,  mask_strategy: str = "random", mask: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 
+        ############################
+        ### Force Missing to Nan ###
+        ############################
+        x = torch.nan_to_num(x, nan=0.0)
+        
         # add channel dimension
         x = x.unsqueeze(1)
         latent, mask = self.forward_encoder(x, mask_ratio, mask=mask)

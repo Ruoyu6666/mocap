@@ -46,7 +46,6 @@ class MABeMouseDataset(BasePoseTrajDataset):
         self,
         mode: str,
         path_to_data_dir: Path,
-        scale: bool = True,
         sampling_rate: int = 1,
         num_frames: int = 80,
         sliding_window: int = 1,
@@ -59,7 +58,6 @@ class MABeMouseDataset(BasePoseTrajDataset):
 
         super().__init__(
             path_to_data_dir,
-            scale,
             sampling_rate,
             num_frames,
             sliding_window,

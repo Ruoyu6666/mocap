@@ -122,7 +122,7 @@ class ViewInvariant:
             )
 
         idx    = int(np.argmax(valid_essential))     # frame with most valid essentials
-        points = x[idx]                            # (J, 3) 
+        points = x[idx]                              # (J, 3) 
 
         
         mask_na = np.any(np.isnan(points), axis=1) # checks per joint whether any of its 3 coordinates is NaN.
@@ -168,9 +168,8 @@ class ViewInvariant:
     def untransform(self, x, **kwargs):
         """
         Inverse transform: rotate by -angle + re-add barycenter.
-        Args:
-            x:       (B, T, J, 3) — batched sequences in canonical frame
-            kwargs:  must contain 'VI_angle' and 'VI_barycenter'
+        Args:    x:      (B, T, J, 3) — batched sequences in canonical frame
+            kwargs:      must contain 'VI_angle' and 'VI_barycenter'
                      (scalars, numpy arrays, or torch tensors)
         Returns:
             (B, T, J, 3) sequences restored to original coordinate frame
@@ -242,10 +241,12 @@ class Normalize:
         range_ = max_ - min_
         safe_range = np.where(range_ == 0, 1.0, range_) ## Avoid division by zero: where range is 0, output 0 (midpoint of [-1,1])
         x_norm = 2 * (x - min_) / safe_range - 1
-        """
-        # Force constant axes to 0 (not ±inf or nan)
-        x_norm[..., range_ == 0] = 0.0
-        """
+
+        ##############################################
+        # Force constant axes to 0 (not ±inf or nan) #
+        ##############################################
+        # x_norm[..., range_ == 0] = 0.0
+        
         return x_norm
 
     @staticmethod
@@ -311,3 +312,68 @@ class Normalize:
 
         # min_sample shape (3,) broadcasts over (..., 3) regardless of ndim
         return self._unnormalize(np.array(x), min_sample, max_sample)
+    
+
+
+
+
+
+class NormalizeCube:
+    """
+    Per-sample normalization to [-1, 1] using ONE scale factor across all axes.
+    Preserves aspect ratio — fits skeleton in a cube.
+
+    Difference from Normalize:
+      Normalize:     each axis scaled independently → aspect ratio distorted
+      NormalizeCube: all axes share the largest range → aspect ratio preserved
+    """
+
+    def __str__(self):
+        return 'NormalizeCube'
+
+    @staticmethod
+    def _get_center_and_amplitude(min_, max_):
+        """min_, max_: (..., 3). amplitude is scalar or (..., 1)."""
+        center    = (min_ + max_) / 2
+        amplitude = np.max(max_ - min_, axis=-1, keepdims=True)
+        return center, amplitude
+
+    @staticmethod
+    def _normalize(x, center, amplitude):
+        if np.all(amplitude == 0):
+            return np.zeros_like(x)
+        return 2 * (x - center) / amplitude
+
+    @staticmethod
+    def _unnormalize(x, center, amplitude):
+        return amplitude / 2 * x + center
+
+    def __call__(self, x, *args, x_supp=(), **kwargs):
+        """(T, J, 3) → normalized (T, J, 3), shared scale across axes."""
+        min_ = np.nanmin(x, axis=(0, 1))           # (3,)
+        max_ = np.nanmax(x, axis=(0, 1))           # (3,)
+
+        if np.any(np.isnan(min_)) or np.any(np.isnan(max_)):
+            print(f'[NormalizeCube] Warning: NaN in min/max.')
+
+        kwargs['min_sample'] = min_
+        kwargs['max_sample'] = max_
+
+        center, amplitude = self._get_center_and_amplitude(min_, max_)
+
+        x_prime      = self._normalize(x, center, amplitude)
+        x_supp_prime = tuple(self._normalize(xx, center, amplitude) for xx in x_supp)
+
+        return x_prime, x_supp_prime, kwargs
+
+    def untransform(self, x, *args, **kwargs):
+        """(T, J, 3) or (B, T, J, 3) → restored coordinates."""
+        min_ = np.array(kwargs['min_sample'])       # (3,) or (B, 3)
+        max_ = np.array(kwargs['max_sample'])       # (3,) or (B, 3)
+
+        if min_.ndim == 2:                          # (B, 3) → (B, 1, 1, 3)
+            min_ = min_[:, None, None, :]
+            max_ = max_[:, None, None, :]
+
+        center, amplitude = self._get_center_and_amplitude(min_, max_)
+        return self._unnormalize(np.array(x), center, amplitude)

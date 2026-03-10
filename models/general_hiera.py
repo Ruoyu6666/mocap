@@ -346,11 +346,7 @@ class GeneralizedHiera(nn.Module):
         intermediates = []
 
         x = self.patch_embed(x, mask=mask.view(x.shape[0], 1, *self.mask_spatial_shape) if mask is not None else None,) # B, C, *mask_spatial_shape
-        print("x")
-        print(x.shape)
-        print("get_pos_embed")
-        print(self.get_pos_embed().shape)
-        x = x + self.get_pos_embed()
+        x = x + self.get_pos_embed() # (B, 300/3, 128), [1, 300/3, 128]
         x = self.unroll(x) # [768, 900, 128]
         # Discard masked tokens
         if mask is not None:    # mask:[768, 60] -> [768, 7] unmasked ones

@@ -12,7 +12,7 @@ from iopath.common.file_io import g_pathmgr as pathmgr
 from torch.utils.tensorboard import SummaryWriter
 
 from dataset.mabe_mice import MABeMouseDataset
-from dataset.mocap import MocapDataset
+from myfolder.code.mocap.dataset.mocap import MocapDataset
 from engine_pretrain import train_one_epoch
 from models import models_defs
 from util import misc as misc
@@ -22,11 +22,9 @@ from util.misc import parse_tuples, str2bool
 
 def get_args_parser():
     parser = argparse.ArgumentParser("hBehaveMAE pre-training", add_help=False)
-    parser.add_argument("--batch_size", default=4, type=int,
-                        help="Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus",)
+    parser.add_argument("--batch_size", default=4, type=int, help="Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus",)
     parser.add_argument("--epochs", default=100, type=int)
-    parser.add_argument("--accum_iter", default=1, type=int,
-                        help="Accumulate gradient iterations (for increasing the effective batch size under memory constraints)",)
+    parser.add_argument("--accum_iter", default=1, type=int, help="Accumulate gradient iterations (for increasing the effective batch size under memory constraints)",)
 
     parser.add_argument("--dataset",default="shot7m2", type=str, help="Type of dataset [shot7m2, mabe_mice, hbabel]",)
 
@@ -44,8 +42,7 @@ def get_args_parser():
     # train a non-hierarchical model ("BehaveMAE")
     parser.add_argument("--non_hierarchical", default=False, type=str2bool)
 
-    parser.add_argument("--mask_ratio", default=0.75, type=float,
-        help="Masking ratio (percentage of removed patches).",)
+    parser.add_argument("--mask_ratio", default=0.75, type=float, help="Masking ratio (percentage of removed patches).",)
     parser.add_argument("--masking_strategy", default="random", type=str, )
     parser.add_argument("--decoding_strategy", default="multi", type=str, help="Decoding strategy for combining latents [multi, single]",)
     parser.add_argument("--decoder_embed_dim", default=128, type=int)
