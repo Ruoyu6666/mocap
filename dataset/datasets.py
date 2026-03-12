@@ -39,7 +39,7 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
         **kwargs
     ):
 
-        self.path = path_to_data_dir
+        self.path_to_data_dir = path_to_data_dir
 
         # defined if data has been loaded
         self.has_annotations = None

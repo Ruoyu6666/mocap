@@ -107,11 +107,10 @@ class ViewInvariant:
         """
         # 0. Define essential joints for computing barycenter
         ESSENTIAL_JOINTS = [1, 2, 3, 6, 7, 8]
+        #if hasattr(x, 'detach'):
+        #    x = x.detach().cpu().numpy()
         valid_essential = np.array([
-                np.sum([
-                    not np.any(np.isnan(x[t, j]))
-                    for j in ESSENTIAL_JOINTS
-                ])
+                np.sum([not np.any(np.isnan(x[t, j]))for j in ESSENTIAL_JOINTS])
                 for t in range(x.shape[0])
             ])                                           # (T,)
 
@@ -124,7 +123,6 @@ class ViewInvariant:
         idx    = int(np.argmax(valid_essential))     # frame with most valid essentials
         points = x[idx]                              # (J, 3) 
 
-        
         mask_na = np.any(np.isnan(points), axis=1) # checks per joint whether any of its 3 coordinates is NaN.
         # Final guard: need at least 2 valid joints for SVD to be meaningful
         n_valid = np.sum(~mask_na)

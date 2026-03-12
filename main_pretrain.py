@@ -12,7 +12,7 @@ from iopath.common.file_io import g_pathmgr as pathmgr
 from torch.utils.tensorboard import SummaryWriter
 
 from dataset.mabe_mice import MABeMouseDataset
-from myfolder.code.mocap.dataset.mocap import MocapDataset
+from dataset.mocap import MocapDataset
 from engine_pretrain import train_one_epoch
 from models import models_defs
 from util import misc as misc
@@ -126,6 +126,7 @@ def main(args):
     cudnn.benchmark = True
 
     if args.dataset== "mocap":
+        """
         dataset_train = MocapDataset(
                 mode="pretrain",
                 path_to_data_dir=args.path_to_data_dir,
@@ -135,6 +136,22 @@ def main(args):
                 sliding_window=args.sliding_window,
                 fill_holess=args.fill_holes,
                 augmentations=args.data_augment,
+        )
+        """
+        dataset_train = MocapDataset(
+            path_to_data_dir=args.path_to_data_dir,
+            datasets = ["INH1", "INH2", "MOS1aD"],
+            task = "CLB" , # FL2 or Tr
+            sampling_rate=args.sampling_rate,
+            num_frames=args.num_frames,
+            sliding_window=args.sliding_window,
+            fill_holess=args.fill_holes,
+            augmentations=args.data_augment,
+            view_invariant = True, 
+            left_idx = 3,       # default left hip
+            right_idx = 8,       # default right hip
+            index_frame = 149, 
+            normalizer = 'normal',
         )
         dataset_test = False
 
@@ -270,10 +287,8 @@ def main(args):
                 epoch=epoch,
             )
 
-        log_stats = {
-            **{f"train_{k}": v for k, v in train_stats.items()},
-            "epoch": epoch,
-        }
+        log_stats = {**{f"train_{k}": v for k, v in train_stats.items()},
+                    "epoch": epoch,}
 
         if args.output_dir and misc.is_main_process():
             if log_writer is not None:
