@@ -126,18 +126,6 @@ def main(args):
     cudnn.benchmark = True
 
     if args.dataset== "mocap":
-        """
-        dataset_train = MocapDataset(
-                mode="pretrain",
-                path_to_data_dir=args.path_to_data_dir,
-                datasets = ["CP1A", "CP1B", "INH1", "INH2"],
-                sampling_rate=args.sampling_rate,
-                num_frames=args.num_frames,
-                sliding_window=args.sliding_window,
-                fill_holess=args.fill_holes,
-                augmentations=args.data_augment,
-        )
-        """
         dataset_train = MocapDataset(
             path_to_data_dir=args.path_to_data_dir,
             datasets = ["INH1", "INH2", "MOS1aD"],

@@ -111,6 +111,7 @@ class MocapDataset(BasePoseTrajDataset):
         # Step 2: Apply ViewInvariant → Normalize to a single subsequence. 
         seq, _, _  = self.vi(keypoints,   x_supp=(),)
         seq, _, _ = self.mocap_normalize(seq)
+        #print(seq[:, :, -1])
         seq = torch.tensor(seq, dtype=torch.float32)
         return seq
     

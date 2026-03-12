@@ -288,5 +288,5 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
         subseq_ix = self.keypoints_ids[idx]
         subsequence = self.seq_keypoints[subseq_ix[0], subseq_ix[1] : subseq_ix[1] + self.max_keypoints_len]
         inputs = self.prepare_subsequence_sample(subsequence)
-
+        
         return inputs, []
