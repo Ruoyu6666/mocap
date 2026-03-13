@@ -14,7 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 from dataset.mabe_mice import MABeMouseDataset
 from dataset.mocap import MocapDataset
 from engine_pretrain import train_one_epoch
-from models import models_defs
+from myfolder.code.mocap.models.hbehavemae.model import models_defs
 from util import misc as misc
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from util.misc import parse_tuples, str2bool
@@ -105,6 +105,7 @@ def get_args_parser():
 
     parser.add_argument("--beta", default=None, type=float,nargs="+",)
     return parser
+
 
 
 
@@ -303,3 +304,17 @@ def launch_one_thread(local_rank, shard_rank, num_gpus_per_node, num_shards,
     args.output_dir = output_path
     output = main(args)
     stats_queue.put(output)
+
+
+
+
+if __name__ == "__main__":
+    
+    from pathlib import Path
+
+    args = get_args_parser()
+    args = args.parse_args()
+    if args.output_dir:
+        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+
+    main(args)

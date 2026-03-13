@@ -2,25 +2,25 @@
 experiment=experiment1
 
 python run_test.py \
-    --path_to_data_dir /home/rguo_hpc/myfolder/code/mocap/data/data_clb.pkl \
+    --path_to_data_dir /home/rguo_hpc/myfolder/code/mocap/data/data_CLB.pkl \
     --dataset mocap \
     --embedsum True \
     --fast_inference False \
     --batch_size 128 \
     --model gen_hiera \
     --input_size 300 1 30 \
-    --stages 3 4 \
-    --q_strides "5,1,1;1,1,1" \
-    --mask_unit_attn True False \
+    --stages 7 \
+    --q_strides "1,1,1" \
+    --mask_unit_attn True \
     --patch_kernel 3 1 30 \
     --init_embed_dim 128 \
     --init_num_heads 2 \
-    --out_embed_dims 128 192 \
+    --out_embed_dims 128 \
     --distributed \
     --num_frames 300 \
     --pin_mem \
     --num_workers 8 \
-    --fill_holes True \
+    --fill_holes False \
     --output_dir outputs/mocap/${experiment}
 
 

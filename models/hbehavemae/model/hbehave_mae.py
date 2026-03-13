@@ -125,8 +125,7 @@ class HBehaveMAE(GeneralizedHiera):
     def patch_pixel_label_3d(self, input_vid, t, h, w):
         """
         Partitions a tensor of shape (B,C,T,H,W) into patches of shape (t, h, w).
-        Parameters:
-            input_tensor (torch.Tensor): The input tensor of shape (B, C, T, H, W).
+        input_tensor (torch.Tensor): The input tensor of shape (B, C, T, H, W).
         Returns:
             torch.Tensor: The output tensor reshaped to (B, C, T//t, H//h, W//w, t, h, w).
         """
@@ -170,15 +169,13 @@ class HBehaveMAE(GeneralizedHiera):
 
 
     def forward_encoder(self, x: torch.Tensor, mask_ratio: float, mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        
-        if mask is None:
-            mask = self.get_random_mask(x, mask_ratio)  # [B, #MUs_all] x:[768, 1, 900, 3, 24], mask [B, 60]
 
+        if mask is None:
+            mask = self.get_random_mask(x, mask_ratio)  # [B, #MUs_all], x:[B, 1, 900, 3, 24], mask [B, 60] (one stage: [B, 100])
         # Get multi-scale representations from encoder
         _, intermediates = super().forward(x, mask, return_intermediates=True)
         # Resolution unchanged after q_pool stages, so skip those features
-        intermediates = intermediates[: self.q_pool] + intermediates[-1:]
-
+        intermediates = intermediates[: self.q_pool] + intermediates[-1:]  # intermediates[0]: [B, 25, 1, 1, 1, 128]
         # hacky: for multi-gpu training, set 'find_unused_parameters=True' in DDP
         if self.decoding_strategy == "single": # Use only the last layer's output for decoding
             x = intermediates[-1]
@@ -188,7 +185,7 @@ class HBehaveMAE(GeneralizedHiera):
                 x += apply_fusion_head(head, interm_x)
         x = self.encoder_norm(x)
 
-        return x, mask  # mask [128, 20]
+        return x, mask # one stage: [B, 25, 1, 1, 1, 128], [B, 100]
 
 
     def forward_decoder(self, x: torch.Tensor, mask: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -196,9 +193,8 @@ class HBehaveMAE(GeneralizedHiera):
         x = self.decoder_embed(x)
 
         # Combine visible and mask tokens
-        # x: [B, #MUs, *mask_unit_spatial_shape_final, encoder_dim_out]
-        # mask: [B, #MUs_all]
-        x_dec = torch.zeros(*mask.shape, *x.shape[2:], device=x.device, dtype=x.dtype)
+        # x: [B, #MUs, *mask_unit_spatial_shape_final, encoder_dim_out], mask: [B, #MUs_all]
+        x_dec = torch.zeros(*mask.shape, *x.shape[2:], device=x.device, dtype=x.dtype) # (B, 100, 1, 1, 1, 128)
         mask_tokens = self.mask_token.view((1,) * (len(mask.shape) + len(x.shape[2:-1])) + (-1,))
         mask = mask.reshape(mask.shape + (1,) * len(x.shape[2:]))
         mask = mask.expand((-1,) * 2 + x.shape[2:]).bool()
@@ -213,7 +209,7 @@ class HBehaveMAE(GeneralizedHiera):
                               self.tokens_spatial_shape_final,
                               self.mask_unit_spatial_shape_final,)
         # Flatten
-        x = x.reshape(x.shape[0], -1, x.shape[-1])
+        x = x.reshape(x.shape[0], -1, x.shape[-1]) # one stage: [128, 100, 128], two: [128, 20, 128]
         mask = mask.view(x.shape[0], -1)
 
         # Add pos embed
@@ -242,9 +238,9 @@ class HBehaveMAE(GeneralizedHiera):
             label = self.get_label_3d(x, mask)
         else:
             raise NotImplementedError
-        pred = pred[mask]
-        # MSE loss
         
+        pred = pred[mask] # mask:~pred_mask
+        # MSE loss
         loss = (pred - label) ** 2
 
         return loss.mean(), pred, label, None
@@ -261,8 +257,8 @@ class HBehaveMAE(GeneralizedHiera):
         
         # add channel dimension
         x = x.unsqueeze(1)
-        latent, mask = self.forward_encoder(x, mask_ratio, mask=mask)
-        pred, pred_mask = self.forward_decoder(latent, mask)  # pred_mask is mask at resolution of *prediction*
+        latent, mask = self.forward_encoder(x, mask_ratio, mask=mask)                                          # [128, 5, 1, 1, 1, 192], [128, 20]
+        pred, pred_mask = self.forward_decoder(latent, mask)  # pred_mask is mask at resolution of *prediction*  [128, 20, 128],         [128, 20]
 
         # Toggle mask, to generate labels for *masked* tokens
         return *self.forward_loss(x, pred, ~pred_mask), mask

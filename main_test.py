@@ -5,7 +5,7 @@ import tempfile
 from functools import reduce
 from operator import mul
 
-#import joblib
+import joblib
 import numpy as np
 import torch
 import torch.nn as nn
@@ -18,10 +18,10 @@ import util.misc as misc
 #from datasets import hbabel as hbabel
 from dataset import mabe_mice as mice
 #from datasets import shot7m2 as shot7m2
-from myfolder.code.mocap.dataset import mocap as mocap
-from models import models_defs
-from models.hbehave_mae import apply_fusion_head
-from models.hiera_utils import conv_nd
+from dataset import mocap as mocap
+from myfolder.code.mocap.models.hbehavemae.model import models_defs
+from myfolder.code.mocap.models.hbehavemae.model.hbehave_mae import apply_fusion_head
+from myfolder.code.mocap.models.hbehavemae.model.hiera_utils import conv_nd
 from util.logging import master_print as print
 from util.misc import parse_tuples, str2bool
 from util.pos_embed import interpolate_pos_embed
@@ -180,7 +180,7 @@ def extract_hierarchical_embeddings(args):
     if args.non_hierarchical:
         args.q_strides = [(1, 1, 1)] * len(args.stages)
         args.out_embed_dims = [args.out_embed_dims[0]] * len(args.stages)
-
+    """
     if args.dataset == "shot7m2":
         submission_clips = np.load(args.path_to_data_dir, allow_pickle=True).item()
         submission_clips["sequences"] = submission_clips["sequences"]["keypoints"]
@@ -199,33 +199,36 @@ def extract_hierarchical_embeddings(args):
             nr_test_frames = sum([len(sample) for sample in submission_clips["sequences"].values()])
         num_animals = 1
         max_frame_emb_size = 64
-
-    elif args.dataset == "mabe_mice":
+    """
+    if args.dataset == "mabe_mice":
         submission_clips = np.load(os.path.join(args.path_to_data_dir, "mouse_triplet_test.npy"), allow_pickle=True,).item()
-        #submission_clips = np.load(os.path.join(args.path_to_data_dir, "mouse_triplet_train.npy"), allow_pickle=True,).item()
         #normalize = mice.MABeMouseDataset._normalize
         grid_size = 850
         fill_holes = mice.MABeMouseDataset.fill_holes
         num_animals = 3
         max_frame_emb_size = 128
         nr_test_frames = (mice.MABeMouseDataset.DEFAULT_NUM_TESTING_POINTS * mice.MABeMouseDataset.SAMPLE_LEN)
-        #nr_test_frames = mice.MABeMouseDataset.DEFAULT_NUM_TRAINING_POINTS * mice.MABeMouseDataset.SAMPLE_LEN
     
     elif args.dataset == "mocap":
         submission_clips = {"sequences": dict()}
-        fill_holes = mice.MABeMouseDataset.fill_holes
+        #fill_holes = mice.MABeMouseDataset.fill_holes
 
         import pickle
         with open(args.path_to_data_dir, 'rb') as file:
-            data = pickle.load(file)["data"]
-        ##### Force to num ###
-        data = np.nan_to_num(data)
+            raw_data = pickle.load(file)
+        data = []
+        for dataset_name in ["INH1", "INH2", "MOS1aD"]:
+            data.append(raw_data[dataset_name]["data"]) #(num_sequences, 3600, 10, 3)
+        data = np.concatenate(data, dtype=np.float32)
+        ############################
+        ##### Force nan to num #####
+        ############################
+        data = np.nan_to_num(data) #(123, 3600, 10, 3)
         num_samples = len(data)
         submission_clips["sequences"] = {i: data[i] for i in range(num_samples)}
-
         num_animals = 1
         max_frame_emb_size = 128
-        nr_test_frames = num_samples * args.num_frames
+        nr_test_frames = num_samples * 3600
     else:
         raise NotImplementedError(f"Your specified dataset -- {args.dataset} -- is not supported...")
 
@@ -265,6 +268,7 @@ def extract_hierarchical_embeddings(args):
 
     for name, sequence in tqdm(loop):
         # Preprocess sequences
+        """
         if args.dataset == "shot7m2":
             vec_seq = sequence[:, :, shot7m2.SHOT7M2Dataset.SPLIT_INDS]
         elif args.dataset == "hbabel":
@@ -277,7 +281,8 @@ def extract_hierarchical_embeddings(args):
                 features = hbabel.hBABELDataset.ntu_pre_normalization(features)
                 features = features.transpose(1, 2, 3, 0).squeeze()
             vec_seq = features
-        elif args.dataset == " mabe_mice":
+        """
+        if args.dataset == " mabe_mice":
             vec_seq = sequence["keypoints"]
         elif args.dataset == "mocap":
             vec_seq = sequence
@@ -285,7 +290,7 @@ def extract_hierarchical_embeddings(args):
         if args.fill_holes:
             vec_seq = fill_holes(vec_seq)
         vec_seq = vec_seq.reshape(vec_seq.shape[0], -1)
-
+        """
         if not (args.dataset == "shot7m2"):
             if args.dataset == "hbabel":
                 vec_seq = vec_seq.reshape(-1, 25, 3)
@@ -296,7 +301,7 @@ def extract_hierarchical_embeddings(args):
         if args.centeralign:
             vec_seq = vec_seq.reshape(vec_seq.shape[0], mice.NUM_MICE, 12, 2)
             vec_seq = mice.transform_to_centeralign_components(vec_seq)
-
+        """
         full_seq_len = vec_seq.shape[0]
 
         # Pads the beginning and end of the sequence with duplicate frames
@@ -317,7 +322,7 @@ def extract_hierarchical_embeddings(args):
                 data_test = sliding_window_view(pad_vec, window_shape=sub_seq_length, axis=0)[::sliding_window].transpose(0, 2, 1)
             else:
                 len_diff = 0
-        data_test = data_test.reshape(data_test.shape[0], data_test.shape[1], num_animals, -1)
+        data_test = data_test.reshape(data_test.shape[0], data_test.shape[1], num_animals, -1) #(3899, 300, 1, 30)
         data_test = torch.tensor(data_test, dtype=torch.float32)
 
         data_loader = torch.utils.data.DataLoader(data_test, batch_size=args.batch_size, shuffle=False)
@@ -386,15 +391,13 @@ def extract_hierarchical_embeddings(args):
                     embeddings[lv] = embeddings[lv][: len(vec_seq)]
             else:
                 # get full sequence embeddings by doing sliding sum
-                embeddings[lv] = (averaging_sum(
-                                    result_embeds, 
-                                    embeddings[lv].repeat_interleave(repeats=tps, dim=1),
-                                    sliding_window=sliding_window,
+                embeddings[lv] = (averaging_sum(result_embeds, 
+                                                embeddings[lv].repeat_interleave(repeats=tps, dim=1),
+                                                sliding_window=sliding_window,
                                 ).detach().cpu().numpy())
 
         end_idx = start_idx + full_seq_len
         frame_number_map[name] = (start_idx, end_idx)
-
         for lv, submission in submissions.items():
             if lv != "combined":
                 submission[start_idx:end_idx, :] = embeddings[lv + 1]
@@ -436,7 +439,6 @@ def extract_hierarchical_embeddings(args):
             embs_pca = embs
 
         submission = {"frame_number_map": frame_number_map, "embeddings": embs_pca}
-
         np.save(os.path.join(args.output_dir, f"test_submission_{lv}.npy"), submission)
 
         embs.flush()
@@ -453,3 +455,25 @@ def averaging_sum(results_vector, embeds, sliding_window=1):
         results_vector[start : start + emb.shape[0]] += emb
         start += sliding_window
     return results_vector[(emb.shape[0] - sliding_window) : start] / emb.shape[0]
+
+
+
+
+
+
+if __name__ == "__main__":
+    
+    import os
+    from pathlib import Path
+
+    args = get_args_parser()
+    args = args.parse_args()
+    if args.output_dir:
+        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+
+    embeddings_file = os.path.join(args.output_dir, "test_submission_combined.npy")
+    if os.path.exists(embeddings_file):
+        print("Embeddings files already exists - no inference needed. Skipping.")
+        exit(0)
+
+    extract_hierarchical_embeddings(args)

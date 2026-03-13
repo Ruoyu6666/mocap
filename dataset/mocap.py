@@ -12,11 +12,6 @@ from .augmentations import GaussianNoise, Reflect, Rotation
 from .datasets import BasePoseTrajDataset
 
 
-"""
-1. extract subsequences 
-2. View Invariant
-3. Normalize 
-"""
 
 class MocapDataset(BasePoseTrajDataset):
     """Primary Mouse (+Features) dataset."""
@@ -147,3 +142,47 @@ class MocapDataset(BasePoseTrajDataset):
         min_ = np.array(min_).reshape(3)
         max_ = np.array(max_).reshape(3)
         return min_ + (max_ - min_) * (1 + x) / 2
+    
+
+    @staticmethod
+    def normalize_cube(x):
+        """
+        Per-sample normalization to [-1, 1] using ONE scale factor across all axes.
+        Preserves aspect ratio — fits skeleton in a cube.
+
+        Args:       x: (T, J, 3)
+        Returns:    x_norm:    (T, J, 3) normalized
+                    min_:      (3,) per-axis minimum (needed for untransform)
+                    max_:      (3,) per-axis maximum (needed for untransform)
+        """
+        min_ = np.nanmin(x, axis=(0, 1))              # (3,)
+        max_ = np.nanmax(x, axis=(0, 1))              # (3,)
+
+        if np.any(np.isnan(min_)) or np.any(np.isnan(max_)):
+            print('[NormalizeCube] Warning: NaN in min/max — sequence may be all-NaN.')
+
+        amplitude = np.max(max_ - min_)               # scalar — largest range wins
+        center    = (min_ + max_) / 2                 # (3,)
+
+        if amplitude == 0:
+            return np.zeros_like(x), min_, max_
+        x_norm = 2 * (x - center) / amplitude
+
+        return x_norm, min_, max_
+
+    @staticmethod
+    def unnormalize_cube(x, min_, max_):
+        """
+        Inverse of normalize_cube: restore original coordinate range.
+        """
+        min_ = np.array(min_)
+        max_ = np.array(max_)
+
+        if min_.ndim == 2:                            # (B, 3) → (B, 1, 1, 3)
+            min_ = min_[:, None, None, :]
+            max_ = max_[:, None, None, :]
+
+        amplitude = np.max(max_ - min_, axis=-1, keepdims=True)
+        center    = (min_ + max_) / 2
+
+        return amplitude / 2 * x + center

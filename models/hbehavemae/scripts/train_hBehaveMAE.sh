@@ -7,13 +7,13 @@ common_args="--dataset mocap \
     --batch_size 128 \
     --model hbehavemae \
     --input_size 300 1 30 \
-    --stages 3 4 \
-    --q_strides 5,1,1;1,1,1 \
-    --mask_unit_attn True False \
+    --stages 7 \
+    --q_strides 1,1,1 \
+    --mask_unit_attn True \
     --patch_kernel 3 1 30 \
     --init_embed_dim 128 \
     --init_num_heads 2 \
-    --out_embed_dims 128 192 \
+    --out_embed_dims 128 \
     --epochs 100 \
     --num_frames 300 \
     --decoding_strategy multi \
@@ -28,13 +28,13 @@ common_args="--dataset mocap \
     --masking_strategy random \
     --mask_ratio 0.75 \
     --clip_grad 0.02 \
-    --checkpoint_period 20 \
+    --checkpoint_period 5 \
     --fill_holes False \
     --data_augment False \
     --norm_loss True \
     --seed 0 \
-    --output_dir outputs/mocap/experiment2 \
-    --log_dir logs/mocap/experiment2"
+    --output_dir outputs/mocap/experiment1 \
+    --log_dir logs/mocap/experiment1"
 
 
 if [[ $GPUS == 1 ]]; then
