@@ -123,7 +123,7 @@ class MABeMouseDataset(BasePoseTrajDataset):
         sliding_window = self.sliding_window
 
         for seq_ix, (seq_name, sequence) in enumerate(sequences.items()):
-            vec_seq = sequence["keypoints"]
+            vec_seq = sequence["keypoints"] # # (1800, 3, 12, 2)
             if self.interp_holes:
                 vec_seq = self.fill_holes(vec_seq)
             # Preprocess sequences

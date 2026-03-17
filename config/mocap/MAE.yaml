@@ -1,0 +1,57 @@
+model:
+  dim_in: 3
+  dim_feat: 128
+  decoder_dim_feat: 128
+  depth: 7
+  decoder_depth: 2
+  num_heads: 8
+  mlp_ratio: 4
+  num_frames: 300
+  num_joints: 10
+  patch_size: 1
+  t_patch_size: 3
+  qkv_bias: false
+  qk_scale: null
+  drop_rate: 0.0
+  attn_drop_rate: 0.0
+  drop_path_rate: 0.0
+  norm_layer: LayerNorm
+  norm_skes_loss: false
+
+data:
+  dataset: mocap
+  path_to_data_dir: /home/rguo_hpc/myfolder/code/mocap/data/data_CLB.pkl
+  sliding_window: 149
+  sampling_rate: 1
+  fill_holes: false
+  cache_path: ../data/tmp/mocap_train.pkl
+  cache: false
+  mask_ratio: 0.9
+
+augmentation:
+  data_augment: true
+  centeralign: false
+  include_testdata: false
+
+dataloader:
+  num_workers: 8
+  pin_mem: false
+
+training:
+  batch_size: 32
+  epochs: 90
+  lr: 0.0001
+  blr: 0.001
+  min_lr: 0.0
+  weight_decay: 0.05
+
+logging:
+  log_interval: 100
+  save_dir: ./outputs/
+
+checkpoint:
+  ckpt_path: null
+  model_path: ./outputs/checkpoints/mae_checkpoint_epoch_2.pth
+
+job:
+  type: pretrain  # options: pretrain, compute_representations

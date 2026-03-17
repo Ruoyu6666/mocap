@@ -7,7 +7,7 @@ from typing import List
 import numpy as np
 import torch
 from torchvision import transforms
-from .transform import ViewInvariant, Normalize, NormalizeCube
+from .transform import ViewInvariant
 from .augmentations import GaussianNoise, Reflect, Rotation
 from .datasets import BasePoseTrajDataset
 
@@ -62,7 +62,8 @@ class MocapDataset(BasePoseTrajDataset):
         
         if view_invariant:
             self.vi  = ViewInvariant(index_frame = index_frame, left_idx = left_idx, right_idx = right_idx,)
-        self.norm = Normalize() if normalizer == 'normal' else NormalizeCube()
+        # self.norm = Normalize() if normalizer == 'normal' else NormalizeCube()
+        
         if augmentations:
             self.augmentations = transforms.Compose([GaussianNoise(p=0.5),])
         
@@ -72,7 +73,7 @@ class MocapDataset(BasePoseTrajDataset):
 
     # Step 0: load raw data
     def load_data(self):
-        with open(self.path_to_data_dir, 'rb') as file:
+        with open(self.path, 'rb') as file:
                 self.raw_data = pickle.load(file)
 
     def preprocess(self):
@@ -103,11 +104,22 @@ class MocapDataset(BasePoseTrajDataset):
 
         
     def featurise_keypoints(self, keypoints):
-        # Step 2: Apply ViewInvariant → Normalize to a single subsequence. 
+        # Step 2: Apply ViewInvariant → Normalize to a single subsequence.
+        
+        ##########################  
+        ##### For skeletonMAE ####
+        keypoints = keypoints.reshape(-1, 10, 3)
+
+
         seq, _, _  = self.vi(keypoints,   x_supp=(),)
         seq, _, _ = self.mocap_normalize(seq)
-        #print(seq[:, :, -1])
         seq = torch.tensor(seq, dtype=torch.float32)
+        
+        
+        ##########################  
+        ##### For skeletonMAE ####
+        seq = torch.nan_to_num(seq)
+
         return seq
     
     
@@ -118,8 +130,7 @@ class MocapDataset(BasePoseTrajDataset):
 
         Args:       x: (T, J, 3)
         Returns:    x_norm:  (T, J, 3) normalized to [-1, 1]
-                    min_:    (3,) per-axis minimum (needed for untransform)
-                    max_:    (3,) per-axis maximum (needed for untransform)
+                    min_, max_:    (3,) per-axis minimum (needed for untransform)
         """
         min_ = np.nanmin(x, axis=(0, 1))              # (3,)
         max_ = np.nanmax(x, axis=(0, 1))              # (3,)
@@ -134,6 +145,8 @@ class MocapDataset(BasePoseTrajDataset):
 
         return x_norm, min_, max_
     
+
+    @staticmethod
     def mocap_unnormalize(x, min_, max_):
         """
         Inverse of normalize: restore original coordinate range.
@@ -151,9 +164,8 @@ class MocapDataset(BasePoseTrajDataset):
         Preserves aspect ratio — fits skeleton in a cube.
 
         Args:       x: (T, J, 3)
-        Returns:    x_norm:    (T, J, 3) normalized
-                    min_:      (3,) per-axis minimum (needed for untransform)
-                    max_:      (3,) per-axis maximum (needed for untransform)
+        Returns:    x_norm:     (T, J, 3) normalized
+                    min_, max_: (3,) per-axis minimum (needed for untransform)
         """
         min_ = np.nanmin(x, axis=(0, 1))              # (3,)
         max_ = np.nanmax(x, axis=(0, 1))              # (3,)
@@ -169,6 +181,8 @@ class MocapDataset(BasePoseTrajDataset):
         x_norm = 2 * (x - center) / amplitude
 
         return x_norm, min_, max_
+
+
 
     @staticmethod
     def unnormalize_cube(x, min_, max_):

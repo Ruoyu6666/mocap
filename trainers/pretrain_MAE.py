@@ -12,32 +12,37 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from utils import *
-#import models.MAE.util.lr_decay as lrd
-#import models.MAE.util.misc as misc
-# from .models.MAE.util.datasets import build_dataset
+import models.MAE.util.lr_decay as lrd
+import models.MAE.util.misc as misc
+#from models.MAE.util.datasets import build_dataset
 from models.MAE.util.pos_embed import interpolate_temp_embed
 #from models.MAE.util.misc import NativeScalerWithGradNormCount as NativeScaler
 
 from models.MAE.model.SkeletonMAE import SkeletonMAE
 from models.MAE.model.Encoder import STTFEncoder
 from dataset.mabe_mice import MABeMouseDataset
+from dataset.mocap import MocapDataset
 
 
 
 def get_args_parser():
 
     parser = argparse.ArgumentParser("STTF Training & Compute Representation", add_help=False)
-
+    
+    parser.add_argument('--config', default='./config/ntu60_xsub_joint_pretrain_debug.yaml', help='path to the configuration file')
+    
+    
+    
     """SkeletonMAE Model Hyperparameters"""
-    parser.add_argument('--dim_in', default=2, type=int, help='input dimension')
+    parser.add_argument('--dim_in', default=3, type=int, help='input dimension')
     parser.add_argument('--dim_feat', default=128, type=int, help='feature dimension')
     parser.add_argument('--decoder_dim_feat', default=128, type=int, help='decoder feature dimension')
-    parser.add_argument('--depth', default=8, type=int, help='number of layers in the encoder')
-    parser.add_argument('--decoder_depth', default=3, type=int, help='number of layers in the decoder')
+    parser.add_argument('--depth', default=7, type=int, help='number of layers in the encoder')
+    parser.add_argument('--decoder_depth', default=2, type=int, help='number of layers in the decoder')
     parser.add_argument('--num_heads', default=8,  type=int, help='number of attention heads')
     parser.add_argument('--mlp_ratio', default=4, type=int, help='ratio of mlp hidden dim to embedding dim')
     parser.add_argument('--num_frames', default=300, type=int, help='number of frames in the input skeleton sequence')
-    parser.add_argument('--num_joints', default=12, type=int, help='number of joints in the input skeleton sequence')
+    parser.add_argument('--num_joints', default=10, type=int, help='number of joints in the input skeleton sequence')
     parser.add_argument('--patch_size', default=1, type=int, help='spatial patch size (number of joints per patch)')
     parser.add_argument('--t_patch_size', default=3, type=int, help='temporal patch size (number of frames per patch)')
     parser.add_argument('--qkv_bias', action='store_true', help='if True, add a learnable bias to query, key, value')
@@ -50,16 +55,16 @@ def get_args_parser():
     
     
     """Dataset and DataLoader parameters"""
-    parser.add_argument("--dataset",  type=str, default='mabe_mouse')
-    parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/data/MaBe/mouse/mouse_triplet_train.npy')
+    parser.add_argument("--dataset",  type=str, default='mocap')
+    parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/code/mocap/data/data_CLB.pkl')
     parser.add_argument("--sliding_window", default=149, type=int)
     parser.add_argument("--sampling_rate", default=1, type=int)
-    parser.add_argument("--if_fill_holes", default=False, type=str2bool)
+    parser.add_argument("--fill_holes", default=False, type=str2bool)
     parser.add_argument("--cache_path", type=str, default='../data/tmp/mabe_mouse_train.pkl')
     parser.add_argument("--cache", default=False, type=str2bool) # if true cache processed data or load from cache
 
     # In foward function of STTFormer
-    parser.add_argument('--mask_ratio', default=0.85, type=float, help='Masking ratio (percentage of removed patches).')
+    parser.add_argument('--mask_ratio', default=0.9, type=float, help='Masking ratio (percentage of removed patches).')
     
     """Dataset augmentation and preprocessing"""
     parser.add_argument("--data_augment", default=True, type=str2bool)
@@ -72,16 +77,15 @@ def get_args_parser():
     """Training parameters"""
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=90)
-    parser.add_argument("--learning_rate", type=float, default=1e-4)
-
-    #parser.add_argument('--blr', type=float, default=1e-3, metavar='LR', help='base learning rate: absolute_lr = base_lr * total_batch_size / 256')
-    #parser.add_argument('--min_lr', type=float, default=0., metavar='LR', help='lower lr bound for cyclic schedulers that hit 0')
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument('--blr', type=float, default=1e-3, metavar='LR', help='base learning rate: absolute_lr = base_lr * total_batch_size / 256')
+    parser.add_argument('--min_lr', type=float, default=0., metavar='LR', help='lower lr bound for cyclic schedulers that hit 0')
     parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
 
     """Saving and logging"""
     parser.add_argument("--log_interval", type=int, default=100)
     parser.add_argument("--save_dir", type=str, default="./outputs/") #  models, results, checkpoints
-    parser.add_argument("--ckpt_path", type=str, default="./outputs/checkpoints/mae_checkpoint_epoch_2_8layers.pth") # checkpoint path for training
+    parser.add_argument("--ckpt_path", type=str, default=None) # checkpoint path for training
 
     parser.add_argument("--model_path", type=str, default="./outputs/checkpoints/mae_checkpoint_epoch_2.pth") # model path for computing representation
 
@@ -191,20 +195,39 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     """Set up data set and data loader"""
-    dataset_train = MABeMouseDataset(path_to_data_dir=args.path_to_data_dir,
+    """
+    # For MABe dataset
+    dataset_train = MABeMouseDataset(mode = "pretrain",
+                                     path_to_data_dir=args.path_to_data_dir,
                                      sampling_rate=args.sampling_rate,
                                      num_frames=args.num_frames, 
                                      sliding_window=args.sliding_window,
-                                     if_fill=args.if_fill_holes,
+                                     fill_holes=args.fill_holes,
                                      #patch_size=args.patch_size,
-                                     cache_path=args.cache_path, cache=args.cache,
+                                     #cache_path=args.cache_path, cache=args.cache,
                                      augmentations=args.data_augment, #centeralign=args.centeralign,
-                                     include_testdata=True,)
-    
+                                     include_testdata=False,)
+    """
+    dataset_train = MocapDataset(
+            path_to_data_dir=args.path_to_data_dir,
+            datasets = ["INH1", "INH2", "MOS1aD"],
+            task = "CLB" , # FL2 or Tr
+            sampling_rate=args.sampling_rate,
+            num_frames=args.num_frames,
+            sliding_window=args.sliding_window,
+            fill_holes=args.fill_holes,
+            augmentations=args.data_augment,
+            view_invariant = True, 
+            left_idx = 3,       # default left hip
+            right_idx = 8,       # default right hip
+            index_frame = 149, 
+            normalizer = 'normal',
+        )
 
     data_loader = DataLoader(dataset_train, #sampler=sampler_train,
                              batch_size=args.batch_size, num_workers=args.num_workers,
                              pin_memory=args.pin_mem, drop_last=True,)
+    
 
 
 
@@ -234,7 +257,7 @@ if args.job == "pretrain":
     print(f'Total number of parameters: {total_params}')
 
     """Set up optimizer and training loop"""
-    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, amsgrad=True)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, amsgrad=True)
     
     train(model, data_loader, optimizer, device, log_writer=None, args=args)
 
@@ -250,7 +273,7 @@ if args.job == "compute_representations":
                                 sampling_rate=args.sampling_rate,
                                 num_frames=args.num_frames, 
                                 sliding_window=args.num_frames-1,
-                                if_fill=args.if_fill_holes,
+                                if_fill=args.fill_holes,
                                 #patch_size=args.patch_size,
                                 cache_path=args.cache_path, cache=False,
                                 augmentations=None,

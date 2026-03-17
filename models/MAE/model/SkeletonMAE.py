@@ -3,19 +3,20 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 import warnings
-from .layers import MLP, SkeleEmbed, Block, trunc_normal_, DropPath
+from .Layers import MLP, SkeleEmbed, Block, trunc_normal_, DropPath
 
 
 
 class SkeletonMAE(nn.Module):
     def __init__(self, dim_in=3, dim_feat=256, decoder_dim_feat=256, depth=5, decoder_depth=5, 
-                 num_heads=8, mlp_ratio=4,
-                 num_frames=120, num_joints=25, patch_size=1, t_patch_size=4,
-                 qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
-                 drop_path_rate=0., norm_layer=nn.LayerNorm, 
+                 num_heads=8, mlp_ratio=4, num_frames=120, num_joints=25, patch_size=1, t_patch_size=4,
+                 qkv_bias=True, qk_scale=None, drop_rate=0., 
+                 attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm, 
                  norm_skes_loss=False):
         
         super().__init__()
+
+        self.dim_in = dim_in
         self.dim_feat = dim_feat
 
         self.num_frames = num_frames
@@ -106,19 +107,32 @@ class SkeletonMAE(nn.Module):
 
 
 
-    def forward_encoder(self, x, mask_ratio): # x: [3B, 300, 12, 2]
-        
+    def forward_encoder(self, x, mask_ratio): # x: [3B, 300, J, C]
+
+        # Flag the valid patch
+        data_mask  = ~torch.isnan(x)      # True: not nan
+        data_mask = data_mask.all(dim=-1) # with 3 coordinates
+        patch_mask = data_mask.unfold(1, self.t_patch_size, self.t_patch_size) 
+        patch_mask = patch_mask.all(dim=-1) # [3B, 100, J], True = all 3 timesteps valid
+
         x = self.joints_embed(x) # embed skeletons
         NM, TP, VP, _ = x.shape
+        self.valid_patch_mask = patch_mask.reshape(NM, -1)# [NM, 100* J=1200]
+
         x = x + self.pos_embed[:, :, :VP, :] + self.temp_embed[:, :TP, :, :]  # add pos & temp embed
         x = x.reshape(NM, TP * VP, -1)                               # x: [96=3B, 1200, 128]
         x, mask, ids_restore, _ = self.random_masking(x, mask_ratio) # masking: length -> length * mask_ratio:  [96, 119, 128]
-        # x: [24, 119, 128], mask: [24, 1200], ids_restore: [24, 100*12=1200]
+        # x:  [96, 119, 128], mask: [96, 1200]
         for idx, blk in enumerate(self.blocks):     # apply Transformer blocks
             x = blk(x)
         x = self.norm(x)
- 
+        
+        # To be confirmed
+        mask = mask.bool() & self.valid_patch_mask # so that only reconstruct valid patch
+        mask = mask.float()
+
         return x, mask, ids_restore
+
 
 
     def forward_decoder(self, x, ids_restore):
@@ -175,7 +189,6 @@ class SkeletonMAE(nn.Module):
         loss = (pred - target) ** 2
         loss = loss.mean(dim=-1)  # [NM, TP * VP], mean loss per patch
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed joints
-
         return loss
 
 
@@ -185,12 +198,16 @@ class SkeletonMAE(nn.Module):
         #x = x.permute(0, 4, 2, 3, 1).contiguous().view(N * M, T, V, C)
         
         # Modified for mabe dataset
+        N, T, M, _ = x.shape 
+        x = x.reshape(N, T, M, self.num_joints, self.dim_in)
         N, T, M, V, C = x.shape # for mabe dataset, M is number of mice. (batch_size, T, 3, V=12, C=2)
         x = x.permute(0, 2, 1, 3, 4).contiguous().view(-1, T, V, C)
+        
         
         latent, mask, ids_restore = self.forward_encoder(x, mask_ratio) # latent: [3B, 119, 128], mask: [3B, 1200=300/t_patch_size*12],
         pred = self.forward_decoder(latent, ids_restore)                # [NM, TP * VP, C] = [3B, 1200, 2*3(downsasmpled patch size)]
         loss = self.forward_loss(x, pred, mask)
+        
         return loss, pred, mask
 
 

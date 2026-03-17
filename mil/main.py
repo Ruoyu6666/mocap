@@ -18,6 +18,16 @@ from tqdm import tqdm
 from sklearn.utils import shuffle
 from sklearn.metrics import roc_curve, roc_auc_score,precision_recall_fscore_support,f1_score,accuracy_score,precision_score,recall_score,balanced_accuracy_score
 from sklearn.datasets import load_svmlight_file
+
+# comppute confustion metrix
+from sklearn.metrics import multilabel_confusion_matrix #gives a 2×2 confusion matrix for each class (one-vs-rest style).
+
+from sklearn.metrics import confusion_matrix # standard confucsion matrix
+"""
+cm = confusion_matrix(y_true, y_pred)
+print(cm)
+"""
+
 from collections import OrderedDict
 
 from aeon.datasets import load_classification
@@ -104,6 +114,12 @@ def test(testloader, milnet, criterion, args):
     test_predictions = np.argmax(test_predictions,axis=1)
 
     test_labels = np.argmax(test_labels,axis=1)
+    # Compute separate 2×2 matrix per class 
+    mcm = multilabel_confusion_matrix(test_labels, test_predictions)
+
+    #for i, cm in enumerate(mcm):
+    #    print(f"Class {i} confusion matrix:")
+    #    print(cm)
 
 
 

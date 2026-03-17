@@ -13,11 +13,11 @@ from torch.utils.tensorboard import SummaryWriter
 
 from dataset.mabe_mice import MABeMouseDataset
 from dataset.mocap import MocapDataset
-from engine_pretrain import train_one_epoch
-from myfolder.code.mocap.models.hbehavemae.model import models_defs
-from util import misc as misc
-from util.misc import NativeScalerWithGradNormCount as NativeScaler
-from util.misc import parse_tuples, str2bool
+from myfolder.code.mocap.models.hbehaveMAE.engine_pretrain import train_one_epoch
+from models.hbehaveMAE.model import models_defs
+from models.hbehaveMAE.util import misc as misc
+from models.hbehaveMAE.util.misc import NativeScalerWithGradNormCount as NativeScaler
+from models.hbehaveMAE.util.misc import parse_tuples, str2bool
 
 
 def get_args_parser():

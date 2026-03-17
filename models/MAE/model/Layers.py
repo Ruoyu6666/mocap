@@ -40,6 +40,9 @@ def _no_grad_trunc_normal_(tensor, mean, std, a, b):
         return tensor
 
 
+
+
+
 def trunc_normal_(tensor, mean=0., std=1., a=-2., b=2.):
     # type: (Tensor, float, float, float, float) -> Tensor
     r"""Fills the input Tensor with values drawn from a truncated normal distribution. 
@@ -57,6 +60,9 @@ def trunc_normal_(tensor, mean=0., std=1., a=-2., b=2.):
         >>> nn.init.trunc_normal_(w)
     """
     return _no_grad_trunc_normal_(tensor, mean, std, a, b)
+
+
+
 
 
 

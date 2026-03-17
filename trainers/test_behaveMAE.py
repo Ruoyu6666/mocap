@@ -14,17 +14,17 @@ from numpy.lib.stride_tricks import sliding_window_view
 from sklearn.decomposition import PCA, IncrementalPCA
 from tqdm import tqdm
 
-import util.misc as misc
+import models.hbehaveMAE.util.misc as misc
+#from datasets import shot7m2 as shot7m2
 #from datasets import hbabel as hbabel
 from dataset import mabe_mice as mice
-#from datasets import shot7m2 as shot7m2
 from dataset import mocap as mocap
-from myfolder.code.mocap.models.hbehavemae.model import models_defs
-from myfolder.code.mocap.models.hbehavemae.model.hbehave_mae import apply_fusion_head
-from myfolder.code.mocap.models.hbehavemae.model.hiera_utils import conv_nd
-from util.logging import master_print as print
-from util.misc import parse_tuples, str2bool
-from util.pos_embed import interpolate_pos_embed
+from models.hbehaveMAE.model.hbehave_mae import apply_fusion_head
+from models.hbehaveMAE.model.hiera_utils import conv_nd
+from models.hbehaveMAE.model.models_defs import *
+from models.hbehaveMAE.util.logging import master_print as print
+from models.hbehaveMAE.util.misc import parse_tuples, str2bool
+from models.hbehaveMAE.util.pos_embed import interpolate_pos_embed
 
 import torch.serialization
 
@@ -34,7 +34,7 @@ torch.serialization.add_safe_globals([argparse.Namespace])
 def get_args_parser():
     parser = argparse.ArgumentParser("hBehaveMAE embeddings extraction", add_help=False)
     parser.add_argument("--dataset", default="shot7m2", type=str, help="Type of dataset [mabe_mice, shot7m2, hbabel]",)
-    parser.add_argument("--joints3d_procrustes", default=True, type=str2bool)
+    parser.add_argument("--joints3d_procrustes", default=False, type=str2bool)
 
     parser.add_argument("--embedsum", default=False, type=str2bool, help="single embeddings will be summed up instead of concatenated",)
 

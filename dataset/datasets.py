@@ -39,7 +39,7 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
         **kwargs
     ):
 
-        self.path_to_data_dir = path_to_data_dir
+        self.path = path_to_data_dir
 
         # defined if data has been loaded
         self.has_annotations = None
@@ -278,7 +278,7 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
             sequence = sequence.reshape(self.max_keypoints_len, -1)
         feats = self.featurise_keypoints(sequence)
         # flatten for now
-        feats = feats.reshape(self.max_keypoints_len, self.NUM_INDIVIDUALS, -1)
+        feats = feats.reshape(self.max_keypoints_len, self.NUM_INDIVIDUALS, -1) # [300, num_ind, num_joints* 2d or 3d]
 
         return feats
 
