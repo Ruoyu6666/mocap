@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from utils import *
+from myfolder.code.mocap.trainers.utils import *
 import models.MAE.util.lr_decay as lrd
 import models.MAE.util.misc as misc
 #from models.MAE.util.datasets import build_dataset

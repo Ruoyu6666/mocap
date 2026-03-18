@@ -53,6 +53,7 @@ class MABeMouseDataset(BasePoseTrajDataset):
         augmentations: transforms.Compose = None,
         centeralign: bool = False,
         include_testdata: bool = False,
+        model: str = "SkeletonMAE",
         **kwargs
     ):
 
@@ -78,6 +79,8 @@ class MABeMouseDataset(BasePoseTrajDataset):
             )
         else:
             self.augmentations = None
+        
+        self.model = model
 
         self.load_data(include_testdata)
         self.preprocess()

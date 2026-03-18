@@ -121,9 +121,8 @@ class SkeletonMAE(nn.Module):
 
         x = x + self.pos_embed[:, :, :VP, :] + self.temp_embed[:, :TP, :, :]  # add pos & temp embed
         x = x.reshape(NM, TP * VP, -1)                               # x: [96=3B, 1200, 128]
-        x, mask, ids_restore, _ = self.random_masking(x, mask_ratio) # masking: length -> length * mask_ratio:  [96, 119, 128]
-        # x:  [96, 119, 128], mask: [96, 1200]
-        for idx, blk in enumerate(self.blocks):     # apply Transformer blocks
+        x, mask, ids_restore, _ = self.random_masking(x, mask_ratio) # masking: length -> length * mask_ratio:  [96, 119, 128], mask: [96, 1200]
+        for idx, blk in enumerate(self.blocks):                      # apply Transformer blocks
             x = blk(x)
         x = self.norm(x)
         

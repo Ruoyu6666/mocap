@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from utils import *
+from myfolder.code.mocap.trainers.utils import *
 from models.VQ.VQVAE import VQVAE
 from dataset.mabe_mice import MABeMouseDataset
 from dataset.latent import LatentRepresentationDataset

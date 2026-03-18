@@ -22,35 +22,46 @@ from models.hbehaveMAE.util.misc import parse_tuples, str2bool
 
 def get_args_parser():
     parser = argparse.ArgumentParser("hBehaveMAE pre-training", add_help=False)
-    parser.add_argument("--batch_size", default=4, type=int, help="Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus",)
-    parser.add_argument("--epochs", default=100, type=int)
-    parser.add_argument("--accum_iter", default=1, type=int, help="Accumulate gradient iterations (for increasing the effective batch size under memory constraints)",)
-
     parser.add_argument("--dataset",default="shot7m2", type=str, help="Type of dataset [shot7m2, mabe_mice, hbabel]",)
-
+    
+    """Data Loader"""
+    parser.add_argument("--path_to_data_dir", default="", help="path where to load data from",)
+    parser.add_argument("--sampling_rate", default=1, type=int)
+    parser.add_argument("--num_frames", default=16, type=int)
     parser.add_argument("--sliding_window", default=1, type=int)
     parser.add_argument("--fill_holes", default=False, type=str2bool)
     parser.add_argument("--data_augment", default=False, type=str2bool)
     parser.add_argument("--centeralign", action="store_true")
     parser.add_argument("--include_test_data", action="store_true")
+    
+    # Model parameters
+    parser.add_argument("--model", default="hbehavemae", type=str,metavar="MODEL", help="Name of model to train",)
+    parser.add_argument("--non_hierarchical", default=False, type=str2bool) # train a non-hierarchical model ("BehaveMAE")
+
+
+    parser.add_argument("--patch_kernel", default=(3, 1, 24), nargs="+", type=int)
+    parser.add_argument("--decoder_embed_dim", default=128, type=int)
+    parser.add_argument("--decoder_depth", default=1, type=int)
+    parser.add_argument("--decoder_num_heads", default=1, type=int)
+    parser.add_argument("--norm_loss", default=True, type=str2bool)
+
+    parser.add_argument("--mask_ratio", default=0.75, type=float, help="Masking ratio (percentage of removed patches).",)
+    parser.add_argument("--masking_strategy", default="random", type=str, )
+
+    parser.add_argument("--batch_size", default=4, type=int, help="Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus",)
+    parser.add_argument("--epochs", default=100, type=int)
+    parser.add_argument("--accum_iter", default=1, type=int, help="Accumulate gradient iterations (for increasing the effective batch size under memory constraints)",)
+
+
+
+
 
     # for AMASS / hBABEL loading
     parser.add_argument("--joints3d_procrustes", default=True, type=str2bool)
 
-    # Model parameters
-    parser.add_argument("--model", default="hbehavemae", type=str,metavar="MODEL", help="Name of model to train",)
-    # train a non-hierarchical model ("BehaveMAE")
-    parser.add_argument("--non_hierarchical", default=False, type=str2bool)
-
-    parser.add_argument("--mask_ratio", default=0.75, type=float, help="Masking ratio (percentage of removed patches).",)
-    parser.add_argument("--masking_strategy", default="random", type=str, )
     parser.add_argument("--decoding_strategy", default="multi", type=str, help="Decoding strategy for combining latents [multi, single]",)
-    parser.add_argument("--decoder_embed_dim", default=128, type=int)
-    parser.add_argument("--decoder_depth", default=1, type=int)
-    parser.add_argument("--decoder_num_heads", default=1, type=int)
-    parser.add_argument("--num_frames", default=16, type=int)
+    
     parser.add_argument("--checkpoint_period", default=20, type=int)
-    parser.add_argument("--sampling_rate", default=1, type=int)
     parser.add_argument("--distributed", action="store_true")
 
     # hBehaveMAE specific parameters
@@ -58,12 +69,11 @@ def get_args_parser():
     parser.add_argument("--stages", default=(2, 3, 4), nargs="+", type=int)
     parser.add_argument("--q_strides", default=[(1, 1, 3), (1, 1, 4), (1, 3, 1)], type=parse_tuples)
     parser.add_argument("--mask_unit_attn", default=[True, False, False], nargs="+", type=str2bool)
-    parser.add_argument("--patch_kernel", default=(4, 1, 2), nargs="+", type=int)
     parser.add_argument("--init_embed_dim", default=48, type=int)
     parser.add_argument("--init_num_heads", default=2, type=int)
     parser.add_argument("--out_embed_dims", default=(32, 64, 96), nargs="+", type=int)
 
-    parser.add_argument("--norm_loss", default=True, type=str2bool)
+    
 
     # Optimizer parameters
     parser.add_argument("--weight_decay", type=float, default=0.05, help="weight decay (default: 0.05)")
@@ -73,7 +83,6 @@ def get_args_parser():
     parser.add_argument("--min_lr", type=float, default=0.0, metavar="LR", help="lower lr bound for cyclic schedulers that hit 0",)
 
     parser.add_argument("--warmup_epochs", type=int, default=40, metavar="N", help="epochs to warmup LR")
-    parser.add_argument("--path_to_data_dir", default="", help="path where to load data from",)
     parser.add_argument("--output_dir", default="./output_dir", help="path where to save",)
     parser.add_argument("--log_dir", default="./log_dir", help="path where to tensorboard log",)
     parser.add_argument( "--device", default="cuda", help="device to use for training / testing")
@@ -141,6 +150,7 @@ def main(args):
             right_idx = 8,       # default right hip
             index_frame = 149, 
             normalizer = 'normal',
+            model = 'behaveMAE'
         )
         dataset_test = False
 
@@ -158,6 +168,7 @@ def main(args):
             include_testdata=args.include_test_data,
             patch_size=args.patch_kernel,
             q_strides=args.q_strides,
+            model = 'behaveMAE'
         )
         dataset_test = MABeMouseDataset(
             mode="test",
@@ -168,6 +179,7 @@ def main(args):
             fill_holes=args.fill_holes,
             augmentations=None,
             centeralign=args.centeralign,
+            model = 'behaveMAE'
         )
     else:
         print(f"Dataset {args.dataset} unknown...")
@@ -236,9 +248,7 @@ def main(args):
         model_without_ddp = model.module
 
     # following timm: set wd as 0 for bias and norm layers
-    param_groups = misc.add_weight_decay(
-        model_without_ddp, args.weight_decay, bias_wd=args.bias_wd,
-    )
+    param_groups = misc.add_weight_decay(model_without_ddp, args.weight_decay, bias_wd=args.bias_wd,)
     if args.beta is None:
         beta = (0.9, 0.95)
     else:

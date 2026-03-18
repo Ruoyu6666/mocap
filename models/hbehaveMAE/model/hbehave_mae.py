@@ -247,8 +247,8 @@ class HBehaveMAE(GeneralizedHiera):
 
 
     def forward(self, x: torch.Tensor, targets: Optional[torch.Tensor] = None,
-        mask_ratio: float = 0.6,  mask_strategy: str = "random", mask: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+                mask_ratio: float = 0.6,  mask_strategy: str = "random", mask: Optional[torch.Tensor] = None,
+                ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 
         ############################
         ### Force Missing to Nan ###

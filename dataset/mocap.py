@@ -44,6 +44,7 @@ class MocapDataset(BasePoseTrajDataset):
         right_idx:    int = 8,       # default right hip
         index_frame:  int = 149, 
         normalizer:    str = 'normal',
+        model: str = "SkeletonMAE",
         **kwargs
     ):
         super().__init__(
@@ -66,6 +67,8 @@ class MocapDataset(BasePoseTrajDataset):
         
         if augmentations:
             self.augmentations = transforms.Compose([GaussianNoise(p=0.5),])
+        
+        self.model = model
         
         self.load_data()
         self.preprocess()
@@ -105,20 +108,15 @@ class MocapDataset(BasePoseTrajDataset):
         
     def featurise_keypoints(self, keypoints):
         # Step 2: Apply ViewInvariant → Normalize to a single subsequence.
-        
-        ##########################  
-        ##### For skeletonMAE ####
-        keypoints = keypoints.reshape(-1, 10, 3)
-
+        if self.model == "SkeletonMAE":
+            keypoints = keypoints.reshape(-1, 10, 3)
 
         seq, _, _  = self.vi(keypoints,   x_supp=(),)
         seq, _, _ = self.mocap_normalize(seq)
         seq = torch.tensor(seq, dtype=torch.float32)
         
-        
-        ##########################  
-        ##### For skeletonMAE ####
-        seq = torch.nan_to_num(seq)
+        if self.model == "SkeletonMAE":
+            seq = torch.nan_to_num(seq)
 
         return seq
     
