@@ -38,15 +38,11 @@ def pretrained_model(checkpoints: Dict[str, str], default: str = None) -> Callab
         ) -> nn.Module:
             if pretrained:
                 if checkpoints is None:
-                    raise RuntimeError(
-                        "This model currently doesn't have pretrained weights available."
-                    )
+                    raise RuntimeError("This model currently doesn't have pretrained weights available.")
                 elif checkpoint is None:
                     raise RuntimeError("No checkpoint specified.")
                 elif checkpoint not in checkpoints:
-                    raise RuntimeError(
-                        f"Invalid checkpoint specified ({checkpoint}). Options are: {list(checkpoints.keys())}."
-                    )
+                    raise RuntimeError(f"Invalid checkpoint specified ({checkpoint}). Options are: {list(checkpoints.keys())}.")
 
                 state_dict = torch.hub.load_state_dict_from_url(
                     checkpoints[checkpoint], map_location="cpu"
