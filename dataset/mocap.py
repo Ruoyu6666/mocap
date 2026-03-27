@@ -31,6 +31,7 @@ class MocapDataset(BasePoseTrajDataset):
 
     def __init__(
         self,
+        mode: str, 
         path_to_data_dir: Path,
         datasets: List[str] | None = None, 
         task: str = "CLB" , # FL2 or Tr
@@ -55,6 +56,7 @@ class MocapDataset(BasePoseTrajDataset):
             interp_holes,
             **kwargs
         )
+        self.mode = mode
         self.datasets = datasets or self.DEFAULT_DATASETS
         self.task = task
         self.augmentations = augmentations
@@ -83,21 +85,27 @@ class MocapDataset(BasePoseTrajDataset):
         seq_keypoints = []
         keypoints_ids = []
         sub_seq_length = self.max_keypoints_len
+        
 
         num_sequences_total = 0
         for dataset_name in self.datasets:
             sequences = self.raw_data[dataset_name]["data"] #(num_sequences, 3600, 10, 3)
             num_sequences = len(sequences)
-            
+            if self.mode == "pretrain":
             # For each dataset
-            for i in range(num_sequences_total, num_sequences_total + num_sequences):
-                vec_seq = sequences[i-num_sequences_total]
-                # Pads the beginning and end of the sequence with duplicate frames
-                pad_vec = np.pad(vec_seq, ((sub_seq_length// 2, sub_seq_length - sub_seq_length // 2), (0, 0), (0, 0)), mode="edge", )
-                seq_keypoints.append(pad_vec)
-                # For extracting subsequenes
-                keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])
-            
+                for i in range(num_sequences_total, num_sequences_total + num_sequences):
+                    vec_seq = sequences[i-num_sequences_total]
+                    # Pads the beginning and end of the sequence with duplicate frames
+                    pad_vec = np.pad(vec_seq, ((sub_seq_length// 2, sub_seq_length - sub_seq_length // 2), (0, 0), (0, 0)), mode="edge", )
+                    seq_keypoints.append(pad_vec)
+                    # For extracting subsequenes
+                    keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])
+            elif self.mode == "compute_representations":
+                for i in range(num_sequences_total, num_sequences_total + num_sequences):
+                    vec_seq = sequences[i-num_sequences_total]
+                    seq_keypoints.append(vec_seq)
+                    keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(vec_seq), self.sliding_window)])
+
             num_sequences_total += num_sequences
         
         self.seq_keypoints = np.array(seq_keypoints, dtype=np.float32) # numpy array: [num_sequences, T/5 + pad_vect, 10, 3]
@@ -110,14 +118,15 @@ class MocapDataset(BasePoseTrajDataset):
         # Step 2: Apply ViewInvariant → Normalize to a single subsequence.
         if self.model == "SkeletonMAE":
             keypoints = keypoints.reshape(-1, 10, 3)
-
+            
         seq, _, _  = self.vi(keypoints,   x_supp=(),)
         seq, _, _ = self.mocap_normalize(seq)
         seq = torch.tensor(seq, dtype=torch.float32)
         
         if self.model == "SkeletonMAE":
+            seq  = torch.unsqueeze(seq, dim = 1)
             seq = torch.nan_to_num(seq)
-
+        
         return seq
     
     
@@ -198,3 +207,16 @@ class MocapDataset(BasePoseTrajDataset):
         center    = (min_ + max_) / 2
 
         return amplitude / 2 * x + center
+    
+
+    def prepare_subsequence_sample(self, sequence: np.ndarray):
+        """Returns one training sample"""
+        if self.augmentations:
+            sequence = sequence.reshape(self.max_keypoints_len, *self.KEYFRAME_SHAPE)
+            sequence = self.augmentations(sequence)
+            sequence = sequence.reshape(self.max_keypoints_len, -1)
+        feats = self.featurise_keypoints(sequence) # [300, 1, 10, 3]
+        # flatten for now
+        #feats = feats.reshape(self.max_keypoints_len, self.NUM_INDIVIDUALS, -1) # [300, num_ind, num_joints* 2d or 3d]
+
+        return feats

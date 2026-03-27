@@ -118,6 +118,8 @@ class STTFEncoder(nn.Module):
         # Modified for mabe dataset
         N, T, M, V, C = x.shape # for mabe dataset, M is number of mice. (batch_size, T, 3, V=12, C=2)
         x = x.permute(0, 2, 1, 3, 4).contiguous().view(-1, T, V, C)
+        
+        
         x = self.joints_embed(x)    # embed skeletons
         NM, TP, VP, _ = x.shape
         x = x + self.pos_embed[:, :, :VP, :] + self.temp_embed[:, :TP, :, :] # add pos & temp embed

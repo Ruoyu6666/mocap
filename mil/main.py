@@ -23,11 +23,6 @@ from sklearn.datasets import load_svmlight_file
 from sklearn.metrics import multilabel_confusion_matrix #gives a 2×2 confusion matrix for each class (one-vs-rest style).
 
 from sklearn.metrics import confusion_matrix # standard confucsion matrix
-"""
-cm = confusion_matrix(y_true, y_pred)
-print(cm)
-"""
-
 from collections import OrderedDict
 
 from aeon.datasets import load_classification
@@ -114,17 +109,23 @@ def test(testloader, milnet, criterion, args):
     test_predictions = np.argmax(test_predictions,axis=1)
 
     test_labels = np.argmax(test_labels,axis=1)
+    """
+    print(test_labels)
+    print(test_predictions)
+    
     # Compute separate 2×2 matrix per class 
     mcm = multilabel_confusion_matrix(test_labels, test_predictions)
 
-    #for i, cm in enumerate(mcm):
-    #    print(f"Class {i} confusion matrix:")
-    #    print(cm)
-
-
+    for i, cm in enumerate(mcm):
+        print(f"Class {i} confusion matrix:")
+        print(cm)
+    cm = confusion_matrix(test_labels, test_predictions)
+    print(cm)
+    """
 
     avg_score = accuracy_score(test_labels,test_predictions)
     balanced_avg_score = balanced_accuracy_score(test_labels,test_predictions)
+    print(balanced_avg_score)
     f1_marco = f1_score(test_labels,test_predictions,average='macro')
     f1_micro = f1_score(test_labels,test_predictions,average='micro')
     
@@ -151,8 +152,8 @@ def test(testloader, milnet, criterion, args):
         roc_auc_ovr_marco = roc_auc_score(test_labels,test_predictions_prob,average='macro',multi_class='ovr')
         roc_auc_ovr_micro = 0.# 
     
-    results = [avg_score,balanced_avg_score,f1_marco,f1_micro, p_marco,p_micro,r_marco,r_micro,roc_auc_ovo_marco,roc_auc_ovo_micro,roc_auc_ovr_marco,roc_auc_ovr_micro]
-    
+    #results = [avg_score,balanced_avg_score,f1_marco,f1_micro, p_marco,p_micro,r_marco,r_micro,roc_auc_ovo_marco,roc_auc_ovo_micro,roc_auc_ovr_marco,roc_auc_ovr_micro]
+    results = [avg_score,balanced_avg_score,f1_marco,f1_micro, p_marco,p_micro,r_marco,r_micro, roc_auc_ovo_marco, roc_auc_ovr_marco]
     return total_loss / len(testloader), results
 
 
@@ -164,7 +165,7 @@ def main():
     parser.add_argument('--num_classes', default=2, type=int, help='Number of output classes [2]')
     parser.add_argument('--num_workers', default=4, type=int, help='number of workers used in dataloader [4]')
     parser.add_argument('--feats_size', default=512, type=int, help='Dimension of the feature size [512] resnet-50 1024')
-    parser.add_argument('--lr', default=5e-4, type=float, help='1e-3 Initial learning rate [0.0002]')
+    parser.add_argument('--lr', default=1e-4, type=float, help='1e-3 Initial learning rate [0.0002]')
     parser.add_argument('--num_epochs', default=100, type=int, help='Number of total training epochs [40|200]')
     parser.add_argument('--gpu_index', type=int, nargs='+', default=(0,), help='GPU ID(s) [0]')
     parser.add_argument('--weight_decay', default=1e-4, type=float, help='Weight decay 1e-4]')
@@ -219,29 +220,33 @@ def main():
         args.num_classes =  num_classes
         print(f'num class:{args.num_classes}')
     
-    elif args.dataset in ["mabe_mouse", "mocap"]:
+    elif args.dataset in ["mabe_mice", "mocap"]:
         # load embedding
-        """
+        if args.dataset == "mabe_mice":
         #Skeleton MAE
-        X = np.load("/home/rguo_hpc/myfolder/code/pipeline/pretrain/outputs/representations/mae_representations.npy")[1600:] #(1600, 1800, 128)
-        print(f'X shape: {X.shape}') #(1600, 1800, 128)
-        # load label
-        y = load_pickle('/home/rguo_hpc/myfolder/code/pipeline/data/mouse_test_labels.pkl')["strain"] #(3736,)
-        """
-        # hbehave/MAE style
-        mouse_X = np.load("/home/rguo_hpc/myfolder/code/mocap/outputs/mocap/experiment1/test_submission_0.npy", allow_pickle=True).item()
-        X = []
-        for mouse_name, indices in mouse_X["frame_number_map"].items():
-            X.append(mouse_X['embeddings'][indices[0]:indices[1]]) #(13, 1800)
-        X = np.stack(X)
-
-        with open("/home/rguo_hpc/myfolder/code/mocap/data/data_CLB.pkl", 'rb') as file:
-            data_CLB = pickle.load(file)
-        drug = []
-        for dataset_name in ["INH1", "INH2", "MOS1aD"]:
-            drug = drug + data_CLB[dataset_name]["drug"]
-        mapping = {s: i for i, s in enumerate(set(drug))}
-        y = [mapping[s] for s in drug]
+            X = np.load("/home/rguo_hpc/myfolder/code/pipeline/pretrain/outputs/representations/mae_representations.npy")[1600:] #(1600, 1800, 128)
+            y = load_pickle('/home/rguo_hpc/myfolder/code/mocap/data/mabe_mice/mouse_test_labels.pkl')["strain"] #(3736,)
+    
+        elif args.dataset == "mocap":
+            """
+            # hbehave/MAE style
+            mouse_X = np.load("/home/rguo_hpc/myfolder/code/mocap/outputs/mocap/experiment1/test_submission_0.npy", allow_pickle=True).item()
+            X = []
+            for mouse_name, indices in mouse_X["frame_number_map"].items():
+                X.append(mouse_X['embeddings'][indices[0]:indices[1]]) #(13, 1800)
+            X = np.stack(X)
+            """
+            X = np.load("/home/rguo_hpc/myfolder/code/mocap/outputs/representations/mae_mocap.npy", allow_pickle=True)
+            X = X.reshape(202, 1200, -1)
+            with open("/home/rguo_hpc/myfolder/code/mocap/data/mocap/data_CLB.pkl", 'rb') as file:
+                data_CLB = pickle.load(file)
+            drug = []
+            for dataset_name in ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"]:
+                drug = drug + data_CLB[dataset_name]["drug"]
+            mapping = {s: i for i, s in enumerate(set(drug))}
+            print("mapping")
+            print(mapping)
+            y = [mapping[s] for s in drug]
 
         from sklearn.model_selection import train_test_split
         Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
@@ -345,11 +350,11 @@ def main():
         train_loss_bag = train(trainloader, milnet, criterion, optimizer, epoch,args) # iterate all bags
         test_loss_bag,results= test(testloader, milnet, criterion, args)
         [avg_score,balanced_avg_score,f1_marco,f1_micro,p_marco,p_micro,r_marco,r_micro,
-                            roc_auc_ovo_marco,roc_auc_ovo_micro,roc_auc_ovr_marco,roc_auc_ovr_micro] = results
+                            roc_auc_ovo_marco, roc_auc_ovr_marco] = results
     
         
-        logger.info('\r Epoch [%d/%d] train loss: %.4f test loss: %.4f, accuracy: %.4f, bal. average score: %.4f, f1 marco: %.4f   f1 mirco: %.4f  p marco: %.4f   p mirco: %.4f r marco: %.4f   r mirco: %.4f  roc_auc ovo marco: %.4f   roc_auc ovo mirco: %.4f  roc_auc ovr marco: %.4f   roc_auc ovr mirco: %.4f' % 
-                  (epoch, args.num_epochs, train_loss_bag, test_loss_bag, avg_score,balanced_avg_score,f1_marco,f1_micro, p_marco,p_micro,r_marco,r_micro,roc_auc_ovo_marco,roc_auc_ovo_micro,roc_auc_ovr_marco,roc_auc_ovr_micro )) 
+        logger.info('\r Epoch [%d/%d] train loss: %.4f test loss: %.4f, accuracy: %.4f, bal. average score: %.4f, f1 marco: %.4f   f1 mirco: %.4f  p marco: %.4f   p mirco: %.4f r marco: %.4f   r mirco: %.4f  roc_auc ovo marco: %.4f   roc_auc ovr marco: %.4f ' % 
+                  (epoch, args.num_epochs, train_loss_bag, test_loss_bag, avg_score, balanced_avg_score,f1_marco,f1_micro, p_marco, p_micro, r_marco, r_micro, roc_auc_ovo_marco, roc_auc_ovr_marco )) 
         
         
         # scheduler.step()
@@ -368,9 +373,9 @@ def main():
     
     
     [avg_score, balanced_avg_score, f1_marco, f1_micro, p_marco, p_micro, r_marco, r_micro,
-        roc_auc_ovo_marco, roc_auc_ovo_micro, roc_auc_ovr_marco, roc_auc_ovr_micro] = results_best
-    logger.info('\r Best  Results: accuracy: %.4f, bal. average score: %.4f, f1 marco: %.4f   f1 mirco: %.4f  p marco: %.4f   p mirco: %.4f r marco: %.4f   r mirco: %.4f  roc_auc ovo marco: %.4f   roc_auc ovo mirco: %.4f  roc_auc ovr marco: %.4f   roc_auc ovr mirco: %.4f' % 
-                  ( avg_score,balanced_avg_score,f1_marco,f1_micro, p_marco,p_micro,r_marco,r_micro,roc_auc_ovo_marco,roc_auc_ovo_micro,roc_auc_ovr_marco,roc_auc_ovr_micro )) 
+        roc_auc_ovo_marco, roc_auc_ovr_marco] = results_best
+    logger.info('\r Best  Results: accuracy: %.4f, bal. average score: %.4f, f1 marco: %.4f   f1 mirco: %.4f  p marco: %.4f   p mirco: %.4f r marco: %.4f   r mirco: %.4f  roc_auc ovo marco: %.4f  roc_auc ovr marco: %.4f' % 
+                  ( avg_score,balanced_avg_score,f1_marco,f1_micro, p_marco,p_micro,r_marco,r_micro,roc_auc_ovo_marco, roc_auc_ovr_marco )) 
     
         # if args.weight_div>0:
         #     if epoch%10==0:

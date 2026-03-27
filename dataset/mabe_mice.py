@@ -11,6 +11,7 @@ from .augmentations import GaussianNoise, Reflect, Rotation
 from .datasets import BasePoseTrajDataset
 
 
+
 class MABeMouseDataset(BasePoseTrajDataset):
     """Primary Mouse (+Features) dataset."""
 

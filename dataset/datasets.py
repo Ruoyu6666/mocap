@@ -111,6 +111,7 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
         return keypoints[:, ::sample_frequency, ...]
 
     def get_num_frames(self):
+
         return self.max_keypoints_len
 
     def __len__(self):

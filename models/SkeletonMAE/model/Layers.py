@@ -77,7 +77,7 @@ class SkeleEmbed(nn.Module):
         self.num_joints = num_joints
         self.patch_size = patch_size
         self.num_frames = num_frames
-        self.t_patch_size = t_patch_size
+        self.t_patch_size = t_patch_size # 3
 
         self.grid_size = num_joints // patch_size
         self.t_grid_size = num_frames // t_patch_size
