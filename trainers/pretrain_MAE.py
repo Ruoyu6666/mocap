@@ -63,6 +63,7 @@ def get_args_parser():
     
     """Dataset and DataLoader parameters"""
     parser.add_argument("--dataset",  type=str, default='mocap')
+    parser.add_argument("--task",  type=str, default='CLB')
     parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/code/mocap/data/mocap/data_CLB.pkl')
     parser.add_argument("--sliding_window", default=99, type=int)
     parser.add_argument("--sampling_rate", default=1, type=int)
@@ -94,7 +95,7 @@ def get_args_parser():
     parser.add_argument("--save_dir", type=str, default="./outputs/") #  models, results, checkpoints
     parser.add_argument("--ckpt_path", type=str, default=None) # checkpoint path for training
 
-    parser.add_argument("--model_path", type=str, default="/home/rguo_hpc/myfolder/code/mocap/outputs/checkpoints/mae_checkpoint_epoch_10.pth") # model path for computing representation
+    parser.add_argument("--model_path", type=str, default="/home/rguo_hpc/myfolder/code/mocap/outputs/checkpoints/CLB/mae_checkpoint_20_061_192.pth") # model path for computing representation
 
     """Type of job"""
     parser.add_argument("--job", type=str, choices=["pretrain", "compute_representations"])
@@ -216,7 +217,7 @@ if __name__ == "__main__":
         dataset_train = MocapDataset(mode = args.job,
                                     path_to_data_dir=args.path_to_data_dir,
                                     datasets = ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"],
-                                    task = "CLB" , # FL2 or Tr
+                                    task = args.task , # FL2 or Tr
                                     sampling_rate=args.sampling_rate,
                                     num_frames=args.num_frames,
                                     sliding_window=args.sliding_window,
@@ -288,7 +289,7 @@ if __name__ == "__main__":
                     mode =args.job,
                     path_to_data_dir=args.path_to_data_dir,
                     datasets = ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"],
-                    task = "CLB" , # FL2 or Tr
+                    task = args.task , # FL2 or Tr
                     sampling_rate=args.sampling_rate,
                     num_frames=args.num_frames,
                     sliding_window=args.num_frames,

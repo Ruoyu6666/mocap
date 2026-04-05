@@ -118,8 +118,8 @@ class SkeletonMAE(nn.Module):
     def forward_encoder(self, x, mask_ratio): # x: [, 300, J, C]
 
         # Flag the valid patch
-        data_mask  =  (x != 0.0)    # True: not nan
-        #data_mask = ~torch.isnan(x)
+        #data_mask  =  (x != 0.0)    # True: not nan
+        data_mask = ~torch.isnan(x)
         data_mask  = data_mask.all(dim=-1) # with 3 coordinates
         patch_mask = data_mask.unfold(1, self.t_patch_size, self.t_patch_size) 
         patch_mask = patch_mask.all(dim=-1) # [3B, 100, J], True = all 3 timesteps valid
