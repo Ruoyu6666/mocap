@@ -297,7 +297,6 @@ def extract_hierarchical_embeddings(args):
                 vec_seq = vec_seq[:, hbabel.hBABELDataset.NTU_KPT_GROUPING, :].reshape(len(vec_seq), -1)
             elif args.dataset == " mabe_mice":
                 vec_seq = mice.MABeMouseDataset._normalize(vec_seq, grid_size)
-
         if args.centeralign:
             vec_seq = vec_seq.reshape(vec_seq.shape[0], mice.NUM_MICE, 12, 2)
             vec_seq = mice.transform_to_centeralign_components(vec_seq)
@@ -455,8 +454,6 @@ def averaging_sum(results_vector, embeds, sliding_window=1):
         results_vector[start : start + emb.shape[0]] += emb
         start += sliding_window
     return results_vector[(emb.shape[0] - sliding_window) : start] / emb.shape[0]
-
-
 
 
 

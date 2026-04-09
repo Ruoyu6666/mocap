@@ -2,6 +2,10 @@
 
 import torch
 import torch.nn as nn
+from torch.utils.tensorboard import SummaryWriter
+import torch.optim as optim
+
+
 from torch.utils.data import DataLoader
 from torch.utils.data import TensorDataset
 from torch.autograd import Variable
@@ -43,13 +47,14 @@ warnings.filterwarnings("ignore")
 def train(trainloader, milnet, criterion, optimizer, epoch, args):
     milnet.train()
     total_loss = 0
-
+    
+    
     for batch_id, (feats, label) in enumerate(trainloader):
         bag_feats = feats.cuda()
         bag_label = label.cuda()
         
         # Window-based random masking
-        if args.dropout_patch>0:
+        if args.dropout_patch > 0:
             selecy_window_indx = random.sample(range(10),int(args.dropout_patch*10))
             inteval = int(len(bag_feats)//10)
             for idx in selecy_window_indx:
@@ -58,14 +63,12 @@ def train(trainloader, milnet, criterion, optimizer, epoch, args):
         optimizer.zero_grad()
    
         if epoch<args.epoch_des:
-            bag_prediction  = milnet(bag_feats,warmup = True)
+            bag_prediction  = milnet(bag_feats, warmup = True)
         else:
-            bag_prediction  = milnet(bag_feats,warmup = False)
+            bag_prediction  = milnet(bag_feats, warmup = False)
         bag_loss = criterion(bag_prediction, bag_label)
-       
-        if True:
-            loss = bag_loss 
-            sys.stdout.write('\r Training bag [%d/%d] bag loss: %.4f  total loss: %.4f' % \
+        loss = bag_loss 
+        sys.stdout.write('\r Training bag [%d/%d] bag loss: %.4f  total loss: %.4f' % \
                             (batch_id, len(trainloader), bag_loss.item(),loss.item()))
         loss.backward()
         
@@ -113,19 +116,18 @@ def test(testloader, milnet, criterion, args):
     print(test_labels)
     print(test_predictions)
     
-    # Compute separate 2×2 matrix per class 
-    mcm = multilabel_confusion_matrix(test_labels, test_predictions)
-
+    mcm = multilabel_confusion_matrix(test_labels, test_predictions) # Compute separate 2×2 matrix per class 
     for i, cm in enumerate(mcm):
         print(f"Class {i} confusion matrix:")
         print(cm)
+    
     cm = confusion_matrix(test_labels, test_predictions)
     print(cm)
     """
 
     avg_score = accuracy_score(test_labels,test_predictions)
     balanced_avg_score = balanced_accuracy_score(test_labels,test_predictions)
-    print(balanced_avg_score)
+
     f1_marco = f1_score(test_labels,test_predictions,average='macro')
     f1_micro = f1_score(test_labels,test_predictions,average='micro')
     
@@ -137,7 +139,7 @@ def test(testloader, milnet, criterion, args):
     
     r_marco = recall_score(test_labels,test_predictions,average='macro')
     r_micro = recall_score(test_labels,test_predictions,average='micro')
-    
+    """
     if args.num_classes ==2:
         roc_auc_ovo_marco = roc_auc_score(test_labels,test_predictions_prob[:,1],average='macro')
         roc_auc_ovo_micro = 0.# roc_auc_score(test_labels,test_predictions_prob,average='micro',multi_class='ovo')
@@ -151,7 +153,9 @@ def test(testloader, milnet, criterion, args):
 
         roc_auc_ovr_marco = roc_auc_score(test_labels,test_predictions_prob,average='macro',multi_class='ovr')
         roc_auc_ovr_micro = 0.# 
-    
+    """
+    roc_auc_ovo_marco = 0
+    roc_auc_ovr_marco = 0
     #results = [avg_score,balanced_avg_score,f1_marco,f1_micro, p_marco,p_micro,r_marco,r_micro,roc_auc_ovo_marco,roc_auc_ovo_micro,roc_auc_ovr_marco,roc_auc_ovr_micro]
     results = [avg_score,balanced_avg_score,f1_marco,f1_micro, p_marco,p_micro,r_marco,r_micro, roc_auc_ovo_marco, roc_auc_ovr_marco]
     return total_loss / len(testloader), results
@@ -236,33 +240,90 @@ def main():
                 X.append(mouse_X['embeddings'][indices[0]:indices[1]]) #(13, 1800)
             X = np.stack(X)
             """
+            # Skeleton MAE style
+            #X = np.load("/home/rguo_hpc/myfolder/code/mocap/outputs/representations/mae_mocap.npy", allow_pickle=True)
+            #X = X.reshape(202, 1200, -1)
             
-            X = np.load("/home/rguo_hpc/myfolder/code/mocap/outputs/representations/mae_mocap.npy", allow_pickle=True)
-            X = X.reshape(202, 1200, -1)
+            fold_1 = {
+                "CP1A": {"train": ["M14", "M15", "M19"], 
+                        "valid": ["M1"]},
+                "CP1B": {"train": ["M2", "M3", "M4", "M5", "M6"], 
+                        "valid": ["M1"]},
+                "INH1": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10"],
+                        "valid": ["M1", "M6"]},
+                "INH2": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10", "M12"],
+                        "valid": ["M1", "M6", "M11"]},
+                "MOS1aD": {"train": ["M5", "M6", "M8", "M9", "M10"],
+                        "valid": ["M4"]}
+            }
+            fold_2 = {
+                "CP1A": {"train": ["M1", "M15", "M19"], 
+                        "valid": ["M14"]},
+                "CP1B": {"train": ["M1", "M3", "M4", "M5", "M6"], 
+                        "valid": ["M2"]},
+                "INH1": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10"],
+                        "valid": ["M2", "M7"]},
+                "INH2": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10", "M11"],
+                        "valid": ["M2", "M7", "M12"]},
+                "MOS1aD": {"train": ["M4", "M6", "M8", "M9", "M10"],
+                            "valid": ["M5"]}
+            }
+            fold_3 = {
+                "CP1A": {"train": ["M1", "M14", "M19"], 
+                        "valid": ["M15"]},
+                "CP1B": {"train": ["M1", "M2", "M4", "M5", "M6"], 
+                        "valid": ["M3"]},
+                "INH1": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M10"],
+                        "valid": ["M3", "M8"]},
+                "INH2": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M11", "M12"],
+                        "valid": ["M3", "M8", "M10"]},
+                "MOS1aD": {"train": ["M4", "M5", "M8", "M9", "M10"],
+                            "valid": ["M6"]}
+            }
+            fold_4 = {
+                "CP1A": {"train": ["M1", "M14", "M15"], 
+                        "valid": ["M19"]},
+                "CP1B": {"train": ["M1", "M2", "M3", "M5", "M6"], 
+                        "valid": ["M4"]},
+                "INH1": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10"],
+                        "valid": ["M4", "M9"]},
+                "INH2": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10", "M12"],
+                        "valid": ["M4", "M9", "M11"]},
+                "MOS1aD": {"train": ["M4", "M5", "M6", "M9", "M10"],
+                        "valid": ["M8"]}
+            }
+
+
+            Xtr = np.load("/home/rguo_hpc/myfolder/code/mocap/outputs/representations/fold_4/mae_mocap_tr.npy", allow_pickle=True)
+            Xte = np.load("/home/rguo_hpc/myfolder/code/mocap/outputs/representations/fold_4/mae_mocap_val.npy", allow_pickle=True)
             with open("/home/rguo_hpc/myfolder/code/mocap/data/mocap/data_CLB.pkl", 'rb') as file:
                 data = pickle.load(file)
+            drug_tr = []
+            drug_te = []
+            for dataset_name in ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"]:
+                for mouse_name in fold_4[dataset_name]["train"]:
+                    drug_tr = drug_tr + data[dataset_name][mouse_name]["drug"]
+                for mouse_name in fold_4[dataset_name]["valid"]:
+                    drug_te = drug_te + data[dataset_name][mouse_name]["drug"]
+            mapping = {s: i for i, s in enumerate(set(drug_tr))}
             
-
-                                
+            ytr = [mapping[s] for s in drug_tr]
+            yte = [mapping[s] for s in drug_te]    
+            
+            """                    
             drug = []
-            mouse = []
+            concentration = []
             for dataset_name in ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"]:
-                drug = drug + data[dataset_name]["drug"]
-                mouse = mouse + data[dataset_name]["mouse"]
-
+                for mouse_name in data[dataset_name].keys():
+                    drug = drug + data[dataset_name][mouse_name]["drug"]
+                    concentration = concentration + data[dataset_name][mouse_name]["concentration"]
             mapping = {s: i for i, s in enumerate(set(drug))}
-            y = [mapping[s] for s in drug]
+            y = [mapping[s] for s in drug]"""
 
-        """
-            for dataset_name in ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"]:
-                drug = drug + data[dataset_name]["drug"]
-                mouse = mouse + data[dataset_name]["mouse"]
-
-            mapping = {s: i for i, s in enumerate(set(drug))}
-            y = [mapping[s] for s in drug]
-
-        from sklearn.model_selection import train_test_split
-        Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
+        #from sklearn.model_selection import train_test_split
+        #Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
+        
+        
         Xtr = torch.from_numpy(Xtr)#.permute(0,2,1).float() #(2802, 128, 1800) -> (2802, 1800, 128)
         Xte = torch.from_numpy(Xte)#.permute(0,2,1).float()  
         ytr = F.one_hot(torch.tensor(ytr)).float()
@@ -270,18 +331,13 @@ def main():
 
         trainset = TensorDataset(Xtr,ytr)
         testset = TensorDataset(Xte, yte)
-        """
 
         args.feats_size = Xtr.shape[-1]
         L_in = Xtr.shape[-1]
-        num_classes = len(set(drug))
-        args.num_classes =  len(set(drug))
+        num_classes = len(set(drug_tr))
+        args.num_classes =  len(set(drug_tr))
         print(f'num class:{args.num_classes}' )
         seq_len = Xtr.shape[1]
-        
-    
-    
-    
     
     """
     elif args.dataset in ["moseq","mabe_mouse_72"]:
@@ -304,7 +360,6 @@ def main():
         args.num_classes =  yte.shape[-1]
         print(f'num class:{args.num_classes}' )
         seq_len = Xte.shape[1]
-
     else:
         Xtr, ytr, meta = load_classification(name=args.dataset, split='train', return_metadata=True)
         word_to_idx = {}
@@ -364,12 +419,16 @@ def main():
     results_best = None
     
     for epoch in range(1, args.num_epochs + 1):
+        writer = SummaryWriter(log_dir=args.save_dir+'/logs/')
+        train_loss_bag = train(trainloader, milnet, criterion, optimizer, epoch, args) # iterate all bags
+        test_loss_bag, results= test(testloader, milnet, criterion, args)
 
-        train_loss_bag = train(trainloader, milnet, criterion, optimizer, epoch,args) # iterate all bags
-        test_loss_bag,results= test(testloader, milnet, criterion, args)
-        [avg_score,balanced_avg_score,f1_marco,f1_micro,p_marco,p_micro,r_marco,r_micro,
-                            roc_auc_ovo_marco, roc_auc_ovr_marco] = results
-    
+        writer.add_scalar("Loss/Train", train_loss_bag, epoch)
+        writer.add_scalar("Loss/Test", test_loss_bag, epoch)
+
+
+        [avg_score,balanced_avg_score,f1_marco,f1_micro,p_marco,p_micro,r_marco,r_micro, roc_auc_ovo_marco, roc_auc_ovr_marco] = results
+        writer.add_scalar("Loss/Accuracy", avg_score, epoch)
         
         logger.info('\r Epoch [%d/%d] train loss: %.4f test loss: %.4f, accuracy: %.4f, bal. average score: %.4f, f1 marco: %.4f   f1 mirco: %.4f  p marco: %.4f   p mirco: %.4f r marco: %.4f   r mirco: %.4f  roc_auc ovo marco: %.4f   roc_auc ovr marco: %.4f ' % 
                   (epoch, args.num_epochs, train_loss_bag, test_loss_bag, avg_score, balanced_avg_score,f1_marco,f1_micro, p_marco, p_micro, r_marco, r_micro, roc_auc_ovo_marco, roc_auc_ovr_marco )) 
@@ -389,7 +448,8 @@ def main():
             logger.info('Best model saved at: ' + save_name)
             # logger.info('Best thresholds ===>>> '+ '|'.join('class-{}>>{}'.format(*k) for k in enumerate(thresholds_optimal)))
     
-    
+    writer.close()
+
     [avg_score, balanced_avg_score, f1_marco, f1_micro, p_marco, p_micro, r_marco, r_micro,
         roc_auc_ovo_marco, roc_auc_ovr_marco] = results_best
     logger.info('\r Best  Results: accuracy: %.4f, bal. average score: %.4f, f1 marco: %.4f   f1 mirco: %.4f  p marco: %.4f   p mirco: %.4f r marco: %.4f   r mirco: %.4f  roc_auc ovo marco: %.4f  roc_auc ovr marco: %.4f' % 

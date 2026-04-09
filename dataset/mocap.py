@@ -44,8 +44,10 @@ class MocapDataset(BasePoseTrajDataset):
         left_idx:     int = 3,       # default left hip
         right_idx:    int = 8,       # default right hip
         index_frame:  int = 149, 
-        normalizer:    str = 'normal',
+        #normalizer:    str = 'normal',
         model: str = "SkeletonMAE",
+        split: dict = None, # whether to split dataset by mouse for train/val
+        if_val: bool = False,   # When split is not None: if False, load mouse for training, if true, load mouse for validation mice
         **kwargs
     ):
         super().__init__(
@@ -71,10 +73,11 @@ class MocapDataset(BasePoseTrajDataset):
             self.augmentations = transforms.Compose([GaussianNoise(p=0.5),])
         
         self.model = model
+        self.split = split
+        self.if_val = if_val
         
         self.load_data()
         self.preprocess()
-
 
     # Step 0: load raw data
     def load_data(self):
@@ -85,29 +88,37 @@ class MocapDataset(BasePoseTrajDataset):
         seq_keypoints = []
         keypoints_ids = []
         sub_seq_length = self.max_keypoints_len
-        
 
         num_sequences_total = 0
-        for dataset_name in self.datasets:
-            sequences = self.raw_data[dataset_name]["data"] #(num_sequences, 3600, 10, 3)
-            num_sequences = len(sequences)
-            if self.mode == "pretrain":
-            # For each dataset
-                for i in range(num_sequences_total, num_sequences_total + num_sequences):
-                    vec_seq = sequences[i-num_sequences_total]
-                    # Pads the beginning and end of the sequence with duplicate frames
-                    pad_vec = np.pad(vec_seq, ((sub_seq_length// 2, sub_seq_length - sub_seq_length // 2), (0, 0), (0, 0)), mode="edge", )
-                    seq_keypoints.append(pad_vec)
-                    # For extracting subsequenes
-                    keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])
-            elif self.mode == "compute_representations":
-                for i in range(num_sequences_total, num_sequences_total + num_sequences):
-                    vec_seq = sequences[i-num_sequences_total]
-                    seq_keypoints.append(vec_seq)
-                    keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(vec_seq), self.sliding_window)])
+        for dataset_name in self.datasets: # iterate through datasets ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"]
+            if self.split is not None:
+                if self.if_val:
+                    mice = self.split[dataset_name]["valid"]
+                else:
+                    mice = self.split[dataset_name]["train"]
+            else: # use all data if self.split is None
+                mice = self.raw_data[dataset_name].keys()
+            
+            for mouse_name in mice:
+                sequences = self.raw_data[dataset_name][mouse_name]["data"] #(num_sequences, 3600, 10, 3)
+                num_sequences = len(sequences)
+                if self.mode == "pretrain":
+                    for i in range(num_sequences_total, num_sequences_total + num_sequences):
+                        vec_seq = sequences[i-num_sequences_total]
+                        # Pads the beginning and end of the sequence with duplicate frames
+                        pad_vec = np.pad(vec_seq, ((sub_seq_length// 2, sub_seq_length - sub_seq_length // 2), (0, 0), (0, 0)), mode="edge", )
+                        seq_keypoints.append(pad_vec)
+                        # For extracting subsequenes
+                        keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])  
+                
+                else: #self.mode in ["compute_representations","linprobe", "finetune"]:
+                    for i in range(num_sequences_total, num_sequences_total + num_sequences):
+                        vec_seq = sequences[i-num_sequences_total]
+                        seq_keypoints.append(vec_seq)
+                        keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(vec_seq), self.sliding_window)])
 
-            num_sequences_total += num_sequences
-        
+                num_sequences_total += num_sequences
+        self.num_sequences = num_sequences_total
         self.seq_keypoints = np.array(seq_keypoints, dtype=np.float32) # numpy array: [num_sequences, T/5 + pad_vect, 10, 3]
         self.keypoints_ids = keypoints_ids
 
@@ -134,7 +145,6 @@ class MocapDataset(BasePoseTrajDataset):
     def mocap_normalize(x):
         """
         Per-sample normalization to [-1, 1] independently per axis (X, Y, Z). Does NOT preserve aspect ratio — each axis uses its own min/max.
-
         Args:       x: (T, J, 3)
         Returns:    x_norm:  (T, J, 3) normalized to [-1, 1]
                     min_, max_:    (3,) per-axis minimum (needed for untransform)

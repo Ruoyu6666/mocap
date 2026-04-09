@@ -178,7 +178,6 @@ class TimeMIL(nn.Module):
         if self.if_extract_feature:
             x = self.feature_extractor(x.transpose(1, 2)) # [15, 128, 640] 
             x = x.transpose(1, 2)
-
         # 3736, 1800, 128
 
         B, seq_len, D = x.shape

@@ -213,16 +213,7 @@ def main():
 
     # <------------- load data ------------->
     if args.dataset in ["mabe_mice", "mocap"]:
-        # load embedding
         if args.dataset == "mocap":
-            # Split the dataset into training, validation, and test sets based on mouse
-            mouse_names = {
-                "CP1A": ['M1', 'M14', 'M15', 'M19'], 
-                "CP1B": ['M1', 'M2', 'M3', 'M4', 'M5', 'M6'], 
-                "INH1": ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10'], 
-                "INH2": ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10', 'M11', 'M12'], 
-                "MOS1aD": ['M4', 'M5', 'M6', 'M8', 'M9', 'M10']
-            }
             # k fold validation based on mouse
             fold_1 = {
                 "CP1A": {"train": ["M14", "M15", "M19"], 
@@ -261,7 +252,6 @@ def main():
                 "MOS1aD": {"train": ["M4", "M5", "M8", "M9", "M10"],
                         "valid": ["M6"]}
             }
-            
             fold_4 = {
                 "CP1A": {"train": ["M1", "M14", "M15"], 
                         "valid": ["M19"]},
@@ -274,6 +264,7 @@ def main():
                 "MOS1aD": {"train": ["M4", "M5", "M6", "M9", "M10"],
                         "valid": ["M8"]}
             }
+            folds = [fold_1, fold_2, fold_3, fold_4]
 
             
             # Skeleton MAE Style
@@ -290,11 +281,11 @@ def main():
 
     
     # <------------- split data ------------->   
+    """
     from sklearn.model_selection import KFold, StratifiedKFold
-
-    
-    #kf = KFold(n_splits=4, shuffle=True, random_state=42)
+    kf = KFold(n_splits=4, shuffle=True, random_state=42)
     kf = StratifiedKFold(n_splits=4)
+    """
     scores = []
 
     for train_index, test_index in kf.split(X, y):

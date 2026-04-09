@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 import warnings
-from .Layers import MLP, SkeleEmbed, Block, trunc_normal_, DropPath
+from .layers import MLP, SkeleEmbed, Block, trunc_normal_, DropPath
 
 
 
@@ -118,8 +118,8 @@ class SkeletonMAE(nn.Module):
     def forward_encoder(self, x, mask_ratio): # x: [, 300, J, C]
 
         # Flag the valid patch
-        #data_mask  =  (x != 0.0)    # True: not nan
-        data_mask = ~torch.isnan(x)
+        data_mask  =  (x != 0.0)    # True: not nan
+        #data_mask = ~torch.isnan(x)
         data_mask  = data_mask.all(dim=-1) # with 3 coordinates
         patch_mask = data_mask.unfold(1, self.t_patch_size, self.t_patch_size) 
         patch_mask = patch_mask.all(dim=-1) # [3B, 100, J], True = all 3 timesteps valid
@@ -134,7 +134,6 @@ class SkeletonMAE(nn.Module):
         for idx, blk in enumerate(self.blocks):                      # apply Transformer blocks
             x = blk(x)
         x = self.norm(x)
-
 
         return x, mask, ids_restore
 
@@ -207,6 +206,7 @@ class SkeletonMAE(nn.Module):
         if self.dataset == "mabe_mice":
             N, T, M, _ = x.shape 
             x = x.reshape(N, T, M, self.num_joints, self.dim_in)
+        
         N, T, M, V, C = x.shape # for mabe dataset, M is number of mice. (batch_size, T, 3, V=12, C=2)
         x = x.permute(0, 2, 1, 3, 4).contiguous().view(-1, T, V, C)
 
@@ -215,8 +215,3 @@ class SkeletonMAE(nn.Module):
         loss = self.forward_loss(x, pred, mask)
         
         return loss, pred, mask
-
-
-
-
-    

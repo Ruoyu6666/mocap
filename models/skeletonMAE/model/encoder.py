@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 import warnings
-from .Layers import MLP, SkeleEmbed, Block, Attention, trunc_normal_, DropPath
+from .layers import MLP, SkeleEmbed, Block, Attention, trunc_normal_, DropPath
 
 
 
@@ -33,7 +33,6 @@ class ActionHeadFinetune(nn.Module):
         self.fc2 = nn.Linear(hidden_dim, num_classes)
         
     def forward(self, feat):
-
         N, M, T, J, C = feat.shape
         feat = self.dropout(feat)
         feat = feat.permute(0, 1, 3, 4, 2)      # (N, M, T, J, C) -> (N, M, J, C, T)
@@ -55,7 +54,8 @@ class STTFEncoder(nn.Module):
                  num_heads=8, mlp_ratio=4, num_frames=120, num_joints=25, patch_size=1, t_patch_size=4,
                  qkv_bias=True, qk_scale=None, drop_rate=0., 
                  attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm, 
-                 protocol='linprobe'):
+                 protocol='linprobe'): # ["pretrain", "compute_representations","linprobe", "finetune"]
+        
         super().__init__()
 
         self.num_classes = num_classes
@@ -72,8 +72,9 @@ class STTFEncoder(nn.Module):
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
         self.blocks = nn.ModuleList([
             Block(
-                dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
-                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer)
+                dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, 
+                qkv_bias=qkv_bias, qk_scale=qk_scale, drop=drop_rate, 
+                attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer)
                 for i in range(depth)])
         self.norm = norm_layer(dim_feat)
 
@@ -133,7 +134,7 @@ class STTFEncoder(nn.Module):
 
         if self.protocol == "compute_representations":
             x = x.permute(0, 1, 2, 4, 3)  # (N, M, T, C, J)
-            x = x.mean(dim=-1)            # (N, M, T, C)
+            x = x.mean(dim=-1)            # (N, M, T, C) # calculate representation of each frame by averaging across joints
             x = x.mean(dim=1)             # (N, T, C)
         
         else:
