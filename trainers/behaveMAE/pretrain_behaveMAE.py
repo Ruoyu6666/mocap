@@ -1,23 +1,39 @@
-
 import argparse
 import datetime
 import json
 import os
 import time
+import sys
+sys.path.append(os.getcwd())
 
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 from iopath.common.file_io import g_pathmgr as pathmgr
 from torch.utils.tensorboard import SummaryWriter
-
 from dataset.mabe_mice import MABeMouseDataset
 from dataset.mocap import MocapDataset
-from myfolder.code.mocap.models.hbehaveMAE.engine_pretrain import train_one_epoch
+from models.hbehaveMAE.engine_pretrain import train_one_epoch
 from models.hbehaveMAE.model import models_defs
 from models.hbehaveMAE.util import misc as misc
 from models.hbehaveMAE.util.misc import NativeScalerWithGradNormCount as NativeScaler
 from models.hbehaveMAE.util.misc import parse_tuples, str2bool
+
+
+
+fold_1 = {
+    "CP1A": {"train": ["M14", "M15", "M19"], 
+             "valid": ["M1"]},
+    "CP1B": {"train": ["M2", "M3", "M4", "M5", "M6"], 
+             "valid": ["M1"]},
+    "INH1": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10"],
+             "valid": ["M1", "M6"]},
+    "INH2": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10", "M12"],
+             "valid": ["M1", "M6", "M11"]},
+    "MOS1aD": {"train": ["M5", "M6", "M8", "M9", "M10"],
+               "valid": ["M4"]}
+}
+
 
 
 def get_args_parser():
@@ -136,51 +152,64 @@ def main(args):
     cudnn.benchmark = True
 
     if args.dataset== "mocap":
-        dataset_train = MocapDataset(
-            path_to_data_dir=args.path_to_data_dir,
-            datasets = ["INH1", "INH2", "MOS1aD"],
-            task = "CLB" , # FL2 or Tr
-            sampling_rate=args.sampling_rate,
-            num_frames=args.num_frames,
-            sliding_window=args.sliding_window,
-            fill_holess=args.fill_holes,
-            augmentations=args.data_augment,
-            view_invariant = True, 
-            left_idx = 3,       # default left hip
-            right_idx = 8,       # default right hip
-            index_frame = 149, 
-            normalizer = 'normal',
-            model = 'behaveMAE'
-        )
-        dataset_test = False
+        dataset_train = MocapDataset(mode = "pretrain",
+                                path_to_data_dir=args.path_to_data_dir,
+                                datasets =["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"],
+                                task = "CLB" , # CLB or FL2 or Tr
+                                sampling_rate=args.sampling_rate,
+                                num_frames=args.num_frames,
+                                sliding_window=args.sliding_window,
+                                fill_holess=args.fill_holes,
+                                augmentations=args.data_augment,
+                                view_invariant = True, 
+                                left_idx = 3,       # default left hip
+                                right_idx = 8,      # default right hip
+                                index_frame = 149, 
+                                normalizer = 'normal',
+                                model = 'behaveMAE',
+                                split=fold_1,
+                                if_val= False,)
+        dataset_test = MocapDataset(mode = "pretrain",
+                                path_to_data_dir=args.path_to_data_dir,
+                                datasets = ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"],
+                                task = "CLB" , # FL2 or Tr
+                                sampling_rate=args.sampling_rate,
+                                num_frames=args.num_frames,
+                                sliding_window=args.sliding_window,
+                                fill_holess=args.fill_holes,
+                                augmentations=None,
+                                view_invariant = True, 
+                                left_idx = 3,       # default left hip
+                                right_idx = 8,       # default right hip
+                                index_frame = 149, 
+                                normalizer = 'normal',
+                                model = 'behaveMAE',
+                                split=fold_1,
+                                if_val= True,)
 
 
     elif args.dataset == "mabe_mice":
-        dataset_train = MABeMouseDataset(
-            mode="pretrain",
-            path_to_data_dir=args.path_to_data_dir,
-            num_frames=args.num_frames,
-            sliding_window=args.sliding_window,
-            sampling_rate=args.sampling_rate,
-            fill_holes=args.fill_holes,
-            augmentations=args.data_augment,
-            centeralign=args.centeralign,
-            include_testdata=args.include_test_data,
-            patch_size=args.patch_kernel,
-            q_strides=args.q_strides,
-            model = 'behaveMAE'
-        )
-        dataset_test = MABeMouseDataset(
-            mode="test",
-            path_to_data_dir=args.path_to_data_dir,
-            num_frames=args.num_frames,
-            sliding_window=args.sliding_window,
-            sampling_rate=args.sampling_rate,
-            fill_holes=args.fill_holes,
-            augmentations=None,
-            centeralign=args.centeralign,
-            model = 'behaveMAE'
-        )
+        dataset_train = MABeMouseDataset(mode="pretrain",
+                                    path_to_data_dir=args.path_to_data_dir,
+                                    num_frames=args.num_frames,
+                                    sliding_window=args.sliding_window,
+                                    sampling_rate=args.sampling_rate,
+                                    fill_holes=args.fill_holes,
+                                    augmentations=args.data_augment,
+                                    centeralign=args.centeralign,
+                                    include_testdata=args.include_test_data,
+                                    patch_size=args.patch_kernel,
+                                    q_strides=args.q_strides,
+                                    model = 'behaveMAE')
+        dataset_test = MABeMouseDataset(mode="test",
+                                    path_to_data_dir=args.path_to_data_dir,
+                                    num_frames=args.num_frames,
+                                    sliding_window=args.sliding_window,
+                                    sampling_rate=args.sampling_rate,
+                                    fill_holes=args.fill_holes,
+                                    augmentations=None,
+                                    centeralign=args.centeralign,
+                                    model = 'behaveMAE')
     else:
         print(f"Dataset {args.dataset} unknown...")
 
@@ -188,10 +217,10 @@ def main(args):
         num_tasks = misc.get_world_size()
         global_rank = misc.get_rank()
         sampler_train = torch.utils.data.DistributedSampler(
-            dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True)
+                                dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True)
         if dataset_test:
             sampler_test = torch.utils.data.DistributedSampler(
-                dataset_test, num_replicas=num_tasks, rank=global_rank, shuffle=False)
+                                dataset_test, num_replicas=num_tasks, rank=global_rank, shuffle=False)
         print("Sampler_train = %s" % str(sampler_train))
     else:
         num_tasks = 1
@@ -209,17 +238,13 @@ def main(args):
     else:
         log_writer = None
 
-
-    data_loader_train = torch.utils.data.DataLoader(
-        dataset_train, sampler=sampler_train,
-        batch_size=args.batch_size, num_workers=args.num_workers,
-        pin_memory=args.pin_mem, drop_last=True,)
-    
+    data_loader_train = torch.utils.data.DataLoader(dataset_train, sampler=sampler_train,
+                                        batch_size=args.batch_size, num_workers=args.num_workers,
+                                        pin_memory=args.pin_mem, drop_last=True,)
     if dataset_test:
-        data_loader_test = torch.utils.data.DataLoader(
-            dataset_test, sampler=sampler_test,
-            batch_size=args.batch_size, num_workers=args.num_workers,
-            pin_memory=args.pin_mem, drop_last=False,)
+        data_loader_test = torch.utils.data.DataLoader(dataset_test, sampler=sampler_test,
+                                        batch_size=args.batch_size, num_workers=args.num_workers,
+                                        pin_memory=args.pin_mem, drop_last=False,)
     else:
         data_loader_test = None
 

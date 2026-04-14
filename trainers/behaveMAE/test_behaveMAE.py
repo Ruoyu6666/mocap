@@ -377,8 +377,7 @@ def extract_hierarchical_embeddings(args):
                 # add single animal embeddings up to one embedding
                 embs = embeddings[lv]
                 embs = embs.view(embs.shape[0], embs.shape[1], -1, embeddings[lv].shape[-1])
-                # average pooling
-                embeddings[lv] = torch.mean(embs, dim=2)
+                embeddings[lv] = torch.mean(embs, dim=2) # average pooling
             else:
                 # stack multiple animal embeddings to one embedding
                 embeddings[lv] = torch.flatten(embeddings[lv], start_dim=2)

@@ -107,18 +107,12 @@ class ViewInvariant:
         """
         # 0. Define essential joints for computing barycenter
         ESSENTIAL_JOINTS = [1, 2, 3, 6, 7, 8]
-        #if hasattr(x, 'detach'):
-        #    x = x.detach().cpu().numpy()
-        valid_essential = np.array([
-                np.sum([not np.any(np.isnan(x[t, j]))for j in ESSENTIAL_JOINTS])
-                for t in range(x.shape[0])
-            ])                                           # (T,)
+        valid_essential = np.array([np.sum([not np.any(np.isnan(x[t, j]))for j in ESSENTIAL_JOINTS])
+                                    for t in range(x.shape[0])])            # (T,)
 
         if np.max(valid_essential) == 0:
-            raise ValueError(
-                "[ViewInvariant] No frame found where at least one of joints "
-                f"{[j+1 for j in ESSENTIAL_JOINTS]} is valid."
-            )
+            raise ValueError("[ViewInvariant] No frame found where at least one of joints "
+                            f"{[j+1 for j in ESSENTIAL_JOINTS]} is valid.")
 
         idx    = int(np.argmax(valid_essential))     # frame with most valid essentials
         points = x[idx]                              # (J, 3) 
@@ -174,12 +168,7 @@ class ViewInvariant:
         """
         angle      = kwargs['VI_angle']
         barycenter = kwargs['VI_barycenter']
-        """
-        if hasattr(angle, 'detach'):            # torch tensor
-            angle = angle.detach().cpu().numpy()
-        if hasattr(barycenter, 'detach'):
-            barycenter = barycenter.detach().cpu().numpy()
-        """
+       
         angle      = float(np.squeeze(angle))
         barycenter = np.array(barycenter).reshape(3)  # ensure (3,)
 

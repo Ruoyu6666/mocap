@@ -31,8 +31,8 @@ from iopath.common.file_io import g_pathmgr as pathmgr
 # from torch._six import inf
 from torch import inf
 
-import util.logging as logging
-from util.logging import master_print as print
+import models.hbehaveMAE.util.logging as logging
+from models.hbehaveMAE.util.logging import master_print as print
 
 logger = logging.get_logger(__name__)
 

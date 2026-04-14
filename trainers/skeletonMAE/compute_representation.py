@@ -119,7 +119,7 @@ def get_args_parser():
     """Dataset and DataLoader parameters"""
     parser.add_argument("--dataset",  type=str, default='mocap')
     parser.add_argument("--task",  type=str, default='CLB')
-    parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/code/mocap/data/mocap/data_CLB.pkl')
+    parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/mocap/data/mocap/data_CLB.pkl')
     parser.add_argument("--sliding_window", default=99, type=int)
     parser.add_argument("--sampling_rate", default=1, type=int)
     parser.add_argument("--fill_holes", default=False, type=str2bool)
@@ -149,27 +149,27 @@ def get_args_parser():
     """Saving and logging"""
     parser.add_argument("--log_interval", type=int, default=100)
     parser.add_argument("--save_dir", type=str, default="./outputs/") #  models, results, checkpoints
-    parser.add_argument("--ckpt_path", type=str, default=None) # checkpoint path for resuming training
     
     # model path for computing representation
-    parser.add_argument("--model_path", type=str, default="/home/rguo_hpc/myfolder/code/mocap/outputs/checkpoints/CLB/mae_checkpoint_20_061_192.pth")
+    parser.add_argument("--model_path", type=str, default="/home/rguo_hpc/myfolder/mocap/outputs/checkpoints/mae_checkpoint_epoch_25.pth")
     
     """Type of job"""
     parser.add_argument("--if_val", type=str2bool, default=False) # whether to compute representations for validation set (if False, compute for training set)
     parser.add_argument("--job", type=str, default="compute_representations", choices=["pretrain", "compute_representations","linprobe", "finetune"])
-
+    parser.add_argument("--fast_inference",default=True)
     return parser.parse_args()
 
 
+
+
 # fast inference to compute representations for all sequences in the dataset and save as .npy file
-def compute_representations(model, data_loader, device, args, num_sequences):
+def compute_representations(model,data_loader, device, args, num_sequences):
+    os.makedirs(args.save_dir + '/representations', exist_ok=True)
+    model = model.to(device)
+    model.eval()
+    all_representations = []
+    
     if args.fast_inference:
-        os.makedirs(args.save_dir + '/representations', exist_ok=True)
-        model = model.to(device)
-        model.eval()
-
-        all_representations = []
-
         with torch.no_grad():
             for i, (x, _)  in enumerate(data_loader):
                 x = x.to(device)
@@ -180,27 +180,31 @@ def compute_representations(model, data_loader, device, args, num_sequences):
 
         all_representations = np.concatenate(all_representations, axis=0)
         all_representations = all_representations.reshape(num_sequences, -1, args.dim_feat) # (N, T, C)
-    
-        if args.if_val:
-            np.save(args.save_dir + '/representations/mae_'+ args.dataset +'_val.npy', all_representations)
-        else:
-            np.save(args.save_dir + '/representations/mae_'+ args.dataset +'_tr.npy', all_representations)
+    #### to be completed: non-fast inference that averages representations for overlapping subsequences to get representation for the whole sequence
     else:
-        pass
+        full_len = data_loader.dataset.seq_keypoints.shape[1]
+        starts = list(range(0, full_len - args.num_frames + 1, args.sliding_window))
+        repr_sum = torch.zeros(num_sequences, int(full_len/3), args.dim_feat)
+        count_sum = torch.zeros(num_sequences, int(full_len/3), 1)
+        
+        
+        for i, (x, _)  in enumerate(tqdm(data_loader)): # i, index of the batch; x, batch of subsequences; keypoints_id, list of tuples (seq_id, start_idx) for each subsequence in the batch
+            keypoints_id = data_loader.dataset.keypoints_ids[i*args.batch_size:(i+1)*args.batch_size] # list of tuples (seq_id, start_idx) for each subsequence in the batch
+            x = x.to(device)
+            latent = model(x)      # (N, T, C)
+            latent = torch.squeeze(latent).cpu().detach().numpy() # (N, T, C)
 
-
-
-def compute_representations_for_sequence(model, sequence, device, args):
+            for j in range(len(keypoints_id)):
+                seq_id, start_idx = keypoints_id[j]
+                repr_sum[seq_id, start_idx:start_idx+100] += torch.from_numpy(latent[j])
+                count_sum[seq_id, start_idx:start_idx+100] += 1
+        all_representations = repr_sum / count_sum # (N, T, C)
     
-    model = model.to(device)
-    model.eval()
+    if args.if_val:
+        np.save(args.save_dir + '/representations/mae_'+ args.dataset +'_val.npy', all_representations)
+    else:
+        np.save(args.save_dir + '/representations/mae_'+ args.dataset +'_tr.npy', all_representations)
 
-    with torch.no_grad():
-        x = torch.from_numpy(sequence).unsqueeze(0).to(device) # (1, T, J, C)
-        latent = model(x)      # (1, T, C)
-        representation = torch.squeeze(latent).cpu().numpy() # (T, C)
-
-    return representation
 
 
 
@@ -227,7 +231,7 @@ if __name__ == "__main__":
                                 task = args.task , # FL2 or Tr
                                 sampling_rate=args.sampling_rate,
                                 num_frames=args.num_frames,
-                                sliding_window=args.num_frames,
+                                sliding_window=args.num_frames if args.fast_inference else args.sliding_window,
                                 fill_holes=args.fill_holes,
                                 augmentations=args.data_augment,
                                 view_invariant = True, 
@@ -235,7 +239,7 @@ if __name__ == "__main__":
                                 right_idx = 8,       # default right hip
                                 index_frame = 149, 
                                 model = "SkeletonMAE",
-                                split = fold_4, # whether to split dataset by mouse for train/val
+                                split = fold_1, # whether to split dataset by mouse for train/val
                                 if_val = args.if_val,)
             
             num_sequences = dataset.seq_keypoints.shape[0]

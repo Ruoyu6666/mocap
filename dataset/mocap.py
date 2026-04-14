@@ -21,6 +21,7 @@ class MocapDataset(BasePoseTrajDataset):
     NUM_KEYPOINTS = 10
     KPTS_DIMENSIONS = 3
     KEYFRAME_SHAPE = (NUM_INDIVIDUALS, NUM_KEYPOINTS, KPTS_DIMENSIONS)
+    SAMPLE_LEN = 3600
 
     STR_BODY_PARTS = [
         'left_ankle',  'left_back',  'left_coord',  'left_hip',  'left_knee', 
@@ -118,6 +119,7 @@ class MocapDataset(BasePoseTrajDataset):
                         keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(vec_seq), self.sliding_window)])
 
                 num_sequences_total += num_sequences
+        
         self.num_sequences = num_sequences_total
         self.seq_keypoints = np.array(seq_keypoints, dtype=np.float32) # numpy array: [num_sequences, T/5 + pad_vect, 10, 3]
         self.keypoints_ids = keypoints_ids
@@ -136,8 +138,7 @@ class MocapDataset(BasePoseTrajDataset):
         
         if self.model == "SkeletonMAE":
             seq  = torch.unsqueeze(seq, dim = 1)
-            seq = torch.nan_to_num(seq)
-        
+            seq = torch.nan_to_num(seq) # replace NaN with 0.0
         return seq
     
     
@@ -179,7 +180,6 @@ class MocapDataset(BasePoseTrajDataset):
         """
         Per-sample normalization to [-1, 1] using ONE scale factor across all axes.
         Preserves aspect ratio — fits skeleton in a cube.
-
         Args:       x: (T, J, 3)
         Returns:    x_norm:     (T, J, 3) normalized
                     min_, max_: (3,) per-axis minimum (needed for untransform)
@@ -192,7 +192,6 @@ class MocapDataset(BasePoseTrajDataset):
 
         amplitude = np.max(max_ - min_)               # scalar — largest range wins
         center    = (min_ + max_) / 2                 # (3,)
-
         if amplitude == 0:
             return np.zeros_like(x), min_, max_
         x_norm = 2 * (x - center) / amplitude
@@ -203,9 +202,7 @@ class MocapDataset(BasePoseTrajDataset):
 
     @staticmethod
     def unnormalize_cube(x, min_, max_):
-        """
-        Inverse of normalize_cube: restore original coordinate range.
-        """
+        """Inverse of normalize_cube: restore original coordinate range."""
         min_ = np.array(min_)
         max_ = np.array(max_)
 
@@ -226,7 +223,14 @@ class MocapDataset(BasePoseTrajDataset):
             sequence = self.augmentations(sequence)
             sequence = sequence.reshape(self.max_keypoints_len, -1)
         feats = self.featurise_keypoints(sequence) # [300, 1, 10, 3]
-        # flatten for now
-        #feats = feats.reshape(self.max_keypoints_len, self.NUM_INDIVIDUALS, -1) # [300, num_ind, num_joints* 2d or 3d]
+        #feats = feats.reshape(self.max_keypoints_len, self.NUM_INDIVIDUALS, -1) # [300, num_ind, num_joints* 2d] flatten for behaveMAE
 
         return feats
+    
+
+    def __getitem__(self, idx: int):
+        subseq_ix = self.keypoints_ids[idx]
+        subsequence = self.seq_keypoints[subseq_ix[0], subseq_ix[1] : subseq_ix[1] + self.max_keypoints_len]
+        inputs = self.prepare_subsequence_sample(subsequence)
+        
+        return inputs, []

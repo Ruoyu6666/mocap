@@ -133,6 +133,7 @@ class Head(nn.Module):
         return x
 
 
+
 class PatchEmbed(nn.Module):
     """Patch embed that supports any number of spatial dimensions (1d, 2d, 3d)."""
 
@@ -219,13 +220,8 @@ class GeneralizedHiera(nn.Module):
 
         # Setup roll and reroll modules
         self.unroll = Unroll(input_size, patch_stride, q_strides)
-        self.reroll = Reroll(
-            input_size,
-            patch_stride,
-            q_strides,
-            self.stage_ends,
-            q_pool,
-        )
+        self.reroll = Reroll(input_size, patch_stride, q_strides, self.stage_ends, q_pool,)
+        
         # q_pool locations
         q_pool_blocks = [x + 1 for x in self.stage_ends[:q_pool]] # [3, 7]
         # stochastic depth decay rule
@@ -303,9 +299,7 @@ class GeneralizedHiera(nn.Module):
             return ["pos_embed"]
 
     def get_random_mask(self, x: torch.Tensor, mask_ratio: float) -> torch.Tensor:
-        """
-        Generates a random mask, mask_ratio fraction are dropped. 1 is *keep*, 0 is *remove*. Useful for MAE, FLIP, etc.
-        """
+        """Generates a random mask, mask_ratio fraction are dropped. 1 is *keep*, 0 is *remove*. Useful for MAE, FLIP, etc."""
         B = x.shape[0] # [768, 1, 900, 3, 24])
         # Tokens selected for masking at mask unit level
         num_windows = math.prod(self.mask_spatial_shape)  # 60
@@ -334,8 +328,7 @@ class GeneralizedHiera(nn.Module):
             return self.pos_embed
 
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor = None,
-                return_intermediates: bool = False,) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None, return_intermediates: bool = False,) -> torch.Tensor:
         """
         mask should be a boolean tensor of shape [B, #MUt*#MUy*#MUx] where #MU are the number of mask units in that dim.
         Note: 1 in mask is *keep*, 0 is *remove*; mask.sum(dim=-1) should be the same across the batch.

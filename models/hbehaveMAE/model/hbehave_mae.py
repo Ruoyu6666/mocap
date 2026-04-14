@@ -209,7 +209,7 @@ class HBehaveMAE(GeneralizedHiera):
                               self.tokens_spatial_shape_final,
                               self.mask_unit_spatial_shape_final,)
         # Flatten
-        x = x.reshape(x.shape[0], -1, x.shape[-1]) # one stage: [128, 100, 128], two: [128, 20, 128]
+        x = x.reshape(x.shape[0], -1, x.shape[-1]) # 1st stage: [128, 100, 128], 2nd [128, 20, 128]
         mask = mask.view(x.shape[0], -1)
 
         # Add pos embed
@@ -229,9 +229,8 @@ class HBehaveMAE(GeneralizedHiera):
     def forward_loss(self, x: torch.Tensor, pred: torch.Tensor, mask: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Note: in mask, 0 is *visible*, 1 is *masked*
-
         x: e.g. [B, 3, H, W]
-        pred: [B * num_pred_tokens, num_pixels_in_pred_patch * in_chans]
+        pred:  [B * num_pred_tokens, num_pixels_in_pred_patch * in_chans]
         label: [B * num_pred_tokens, num_pixels_in_pred_patch * in_chans]
         """
         if len(self.q_strides[0]) == 3:
@@ -240,8 +239,7 @@ class HBehaveMAE(GeneralizedHiera):
             raise NotImplementedError
         
         pred = pred[mask] # mask:~pred_mask
-        # MSE loss
-        loss = (pred - label) ** 2
+        loss = (pred - label) ** 2 # MSE loss
 
         return loss.mean(), pred, label, None
 
@@ -250,9 +248,7 @@ class HBehaveMAE(GeneralizedHiera):
                 mask_ratio: float = 0.6,  mask_strategy: str = "random", mask: Optional[torch.Tensor] = None,
                 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 
-        ############################
         ### Force Missing to Nan ###
-        ############################
         x = torch.nan_to_num(x, nan=0.0)
         
         # add channel dimension

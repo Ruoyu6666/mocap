@@ -54,8 +54,9 @@ class SkeletonMAE(nn.Module):
 
         self.decoder_blocks = nn.ModuleList([
             Block(
-                dim=decoder_dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
-                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer)
+                dim=decoder_dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, 
+                qkv_bias=qkv_bias, qk_scale=qk_scale, drop=drop_rate, 
+                attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer)
                 for i in range(decoder_depth)
             ])
         self.decoder_norm = norm_layer(decoder_dim_feat)
@@ -92,7 +93,6 @@ class SkeletonMAE(nn.Module):
         # Force invalid patches to have high noise → always removed
         # valid_patch_mask: [N, L], True = valid
         noise = torch.rand(N, L, device=x.device)  # noise in [0, 1]
-
         noise[~self.valid_patch_mask] = 1.0 + noise[~self.valid_patch_mask]
 
         # sort noise for each sample

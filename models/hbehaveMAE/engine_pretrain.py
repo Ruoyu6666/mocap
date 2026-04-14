@@ -22,9 +22,8 @@ from typing import Iterable
 
 import torch
 from iopath.common.file_io import g_pathmgr as pathmgr
-
-import util.lr_sched as lr_sched
-import util.misc as misc
+from models.hbehaveMAE.util import lr_sched
+import models.hbehaveMAE.util.misc as misc
 
 
 def train_one_epoch(model: torch.nn.Module, data_loader: Iterable, data_loader_val: Iterable, optimizer: torch.optim.Optimizer,
