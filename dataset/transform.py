@@ -70,7 +70,7 @@ class ViewInvariant:
         out[..., 2] = array[..., 2] # Z remains unchanged
         return out
 
-    def _needs_flip(self, rotated_points, A, angle):
+    def _needs_flip(self, rotated_points, A, angle, index_vect=0):
         """
         Check if the mouse is facing -X after rotation, needs a 180° flip.
         Uses left/right hip joints: forward = cross(left→right, spine).
@@ -88,7 +88,7 @@ class ViewInvariant:
         lr_vec = right - left
         # Rotate the spine axis by the same angle
         cos_a, sin_a = np.cos(angle), np.sin(angle)
-        spine = A[:, 0].copy()
+        spine = A[:, index_vect].copy()
         spine_rot = np.array([spine[0] * cos_a - spine[1] * sin_a,
                               spine[0] * sin_a + spine[1] * cos_a,
                               spine[2]])
@@ -108,7 +108,7 @@ class ViewInvariant:
         # 0. Define essential joints for computing barycenter
         ESSENTIAL_JOINTS = [1, 2, 3, 6, 7, 8]
         valid_essential = np.array([np.sum([not np.any(np.isnan(x[t, j]))for j in ESSENTIAL_JOINTS])
-                                    for t in range(x.shape[0])])            # (T,)
+                                    for t in range(x.shape[0])]) 
 
         if np.max(valid_essential) == 0:
             raise ValueError("[ViewInvariant] No frame found where at least one of joints "
@@ -150,7 +150,6 @@ class ViewInvariant:
         Args:   x:          (T, J, 3) or None
                 barycenter: (3,)
                 angle:      float
-        Returns:    (T, J, 3) transformed, or None
         """
         if x is None:
             return None

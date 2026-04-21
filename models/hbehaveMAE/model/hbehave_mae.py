@@ -69,13 +69,12 @@ class HBehaveMAE(GeneralizedHiera):
             # curr_mu_size = [i // s for i, s in zip(curr_mu_size, self.q_stride)]
             curr_mu_size = [i // s for i, s in zip(curr_mu_size, self.q_strides[ix])]
             self.multi_scale_fusion_heads.append(
-                conv_nd(len(self.q_strides[0]))(
-                    self.projections[ix].out_features,
-                    self.projections[-1].out_features,
-                    kernel_size=kernel,
-                    stride=kernel,
-                )
-            )
+                            conv_nd(len(self.q_strides[0]))(
+                            self.projections[ix].out_features,
+                            self.projections[-1].out_features,
+                            kernel_size=kernel,
+                            stride=kernel,)
+                            )
         self.multi_scale_fusion_heads.append(nn.Identity())  # final stage, no transform
 
         # --------------------------------------------------------------------------
@@ -202,12 +201,10 @@ class HBehaveMAE(GeneralizedHiera):
         x_dec = ~mask * mask_tokens + mask * x_dec
 
         # Get back spatial order
-        x = undo_windowing(x_dec,
-                           self.tokens_spatial_shape_final,
-                           self.mask_unit_spatial_shape_final,)
-        mask = undo_windowing(mask[..., 0:1],
-                              self.tokens_spatial_shape_final,
-                              self.mask_unit_spatial_shape_final,)
+        x = undo_windowing(x_dec, self.tokens_spatial_shape_final,
+                                self.mask_unit_spatial_shape_final,)
+        mask = undo_windowing(mask[..., 0:1], self.tokens_spatial_shape_final,
+                                            self.mask_unit_spatial_shape_final,)
         # Flatten
         x = x.reshape(x.shape[0], -1, x.shape[-1]) # 1st stage: [128, 100, 128], 2nd [128, 20, 128]
         mask = mask.view(x.shape[0], -1)
@@ -248,7 +245,7 @@ class HBehaveMAE(GeneralizedHiera):
                 mask_ratio: float = 0.6,  mask_strategy: str = "random", mask: Optional[torch.Tensor] = None,
                 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
 
-        ### Force Missing to Nan ###
+        ##### Force Missing to Nan #####
         x = torch.nan_to_num(x, nan=0.0)
         
         # add channel dimension

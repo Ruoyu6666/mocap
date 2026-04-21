@@ -109,9 +109,10 @@ class WaveletEncoding(nn.Module):
 
 
 class TimeMIL(nn.Module):
-    def __init__(self, in_features, if_extract_feature=False,
-                 n_classes=2, mDim=64, max_seq_len=400, dropout=0.,
-                 if_interval=False, instance_len=30 # length of each path
+    def __init__(self, 
+                 in_features=512, mDim=64, n_classes=2, 
+                 dropout=0.,max_seq_len=400,
+                 if_extract_feature=False, if_interval=False, instance_len=30 # length of each path
                  ):
         super().__init__()
 

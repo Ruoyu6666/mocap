@@ -69,9 +69,6 @@ def get_args_parser():
     parser.add_argument("--accum_iter", default=1, type=int, help="Accumulate gradient iterations (for increasing the effective batch size under memory constraints)",)
 
 
-
-
-
     # for AMASS / hBABEL loading
     parser.add_argument("--joints3d_procrustes", default=True, type=str2bool)
 

@@ -44,6 +44,19 @@ from models.timemil import TimeMIL
 warnings.filterwarnings("ignore")
 
 
+
+def str2bool(v):
+    if type(v) == bool:
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")
+
+
+
 def train(trainloader, milnet, criterion, optimizer, epoch, args):
     milnet.train()
     total_loss = 0
@@ -168,11 +181,12 @@ def main():
     parser.add_argument('--data_path', default="/home/rguo_hpc/myfolder/code/mocap/data/mocap")
     parser.add_argument('--num_classes', default=2, type=int, help='Number of output classes [2]')
     parser.add_argument('--num_workers', default=4, type=int, help='number of workers used in dataloader [4]')
-    parser.add_argument('--feats_size', default=512, type=int, help='Dimension of the feature size [512] resnet-50 1024')
+    # Doesn't matter for skeletonMAE since we load the pre-extracted features
+    parser.add_argument('--feats_size', default=0, type=int, help='Dimension of the feature size [512] resnet-50 1024') 
     parser.add_argument('--lr', default=5e-4, type=float, help='1e-3 Initial learning rate [0.0002]')
-    parser.add_argument('--num_epochs', default=70, type=int, help='Number of total training epochs [40|200]')
+    parser.add_argument('--num_epochs', default=100, type=int, help='Number of total training epochs [40|200]')
     parser.add_argument('--gpu_index', type=int, nargs='+', default=(0,), help='GPU ID(s) [0]')
-    parser.add_argument('--weight_decay', default=1e-4, type=float, help='Weight decay 1e-4]')
+    parser.add_argument('--weight_decay', default=5e-4, type=float, help='Weight decay 1e-4]')
     parser.add_argument('--dropout_patch', default=0.5, type=float, help='Patch dropout rate [0] 0.5')
     parser.add_argument('--dropout_node', default=0.2, type=float, help='Bag classifier dropout rate [0]')
     parser.add_argument('--seed', default='0', type=int, help='random seed')
@@ -180,12 +194,12 @@ def main():
     parser.add_argument('--optimizer', default='adamw', type=str, help='adamw sgd')
     parser.add_argument('--save_dir', default='./savemodel/', type=str, help='the directory used to save all the output')
     parser.add_argument('--epoch_des', default=5, type=int, help='turn on warmup')
-    parser.add_argument('--embed', default=128, type=int, help='Number of embedding')
+    parser.add_argument('--embed', default=192, type=int, help='Number of embedding')
     parser.add_argument('--batchsize', default=32, type=int, help='batchsize')
 
-    parser.add_argument('--if_interval', default=False, type=bool, help='if split the whole time series to intervals, each interval as an instance')
+    parser.add_argument('--if_interval', default=False, type=str2bool, help='if split the whole time series to intervals, each interval as an instance')
     parser.add_argument('--instance_len', default=30, type=int, help='the length of instance')
-    parser.add_argument('--if_extract_feature', default=False, type=bool, help='if extract feature')
+    parser.add_argument('--if_extract_feature', default=True, type=str2bool, help='if extract feature')
     
     args = parser.parse_args()
     gpu_ids = tuple(args.gpu_index)
@@ -296,7 +310,7 @@ def main():
 
             Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/mae_mocap_tr.npy", allow_pickle=True)
             Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/mae_mocap_val.npy", allow_pickle=True)
-            with open("/home/rguo_hpc/myfolder/mocap/data/mocap/data_CLB.pkl", 'rb') as file:
+            with open("/home/rguo_hpc/myfolder/mocap/data/mocap/data_FL2.pkl", 'rb') as file:
                 data = pickle.load(file)
             drug_tr = []
             drug_te = []
@@ -308,8 +322,7 @@ def main():
             mapping = {s: i for i, s in enumerate(set(drug_tr))}
             
             ytr = [mapping[s] for s in drug_tr]
-            yte = [mapping[s] for s in drug_te]    
-            
+            yte = [mapping[s] for s in drug_te]
             """                    
             drug = []
             concentration = []
@@ -384,9 +397,8 @@ def main():
     """    
     
     # <------------- define MIL network ------------->
-    milnet = TimeMIL(args.feats_size, mDim=args.embed, n_classes =num_classes, 
-                     dropout=args.dropout_node, max_seq_len = seq_len,
-                     if_interval=args.if_interval, instance_len=args.instance_len).cuda()
+    milnet = TimeMIL(in_features=args.feats_size, mDim=args.embed, n_classes=num_classes, dropout=args.dropout_node, max_seq_len=seq_len, 
+                     if_extract_feature=args.if_extract_feature, if_interval=args.if_interval, instance_len=args.instance_len).cuda()
     
     # total number of trainable model parameters
     total_params = sum(p.numel() for p in  milnet.parameters() if p.requires_grad)

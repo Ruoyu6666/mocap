@@ -11,7 +11,6 @@ from timm.models.layers import DropPath, Mlp
 from .hiera_utils import Reroll, Unroll, conv_nd, do_masked_conv, do_pool
 
 
-
 class MaskUnitAttention(nn.Module):
     """
     Computes either Mask Unit or Global Attention. Also is able to perform q pooling.
@@ -112,12 +111,11 @@ class HieraBlock(nn.Module):
 
 
 class Head(nn.Module):
-    def __init__(
-        self,
-        dim: int,
-        num_classes: int,
-        dropout_rate: float = 0.0,
-        act_func: Callable[[torch.Tensor], torch.Tensor] = lambda x: x.softmax(dim=-1),
+    def __init__(self,
+                dim: int,
+                num_classes: int,
+                dropout_rate: float = 0.0,
+                act_func: Callable[[torch.Tensor], torch.Tensor] = lambda x: x.softmax(dim=-1),
     ):
         super().__init__()
         self.dropout = nn.Dropout(dropout_rate) if dropout_rate > 0 else nn.Identity()
@@ -201,7 +199,7 @@ class GeneralizedHiera(nn.Module):
         self.flat_q_strides = flat_q_strides
         self.mask_unit_attn = mask_unit_attn
 
-        self.q_strides = q_strides # [(5, 1, 1), (1, 3, 1)]
+        self.q_strides = q_strides # q_strides [(5, 1, 1), (1, 3, 1)]
         q_pool = len(q_strides) # 2
         self.q_pool = q_pool
 
@@ -343,8 +341,7 @@ class GeneralizedHiera(nn.Module):
         x = self.unroll(x) # [768, 900, 128]
         # Discard masked tokens
         if mask is not None:    # mask:[768, 60] -> [768, 7] unmasked ones
-            x = x[mask[..., None].tile(1, self.mu_size, x.shape[2])].view(x.shape[0], -1, x.shape[-1]) 
-        # [768, 105, 128])
+            x = x[mask[..., None].tile(1, self.mu_size, x.shape[2])].view(x.shape[0], -1, x.shape[-1]) # mabe:[768, 105, 128])
 
         for i, blk in enumerate(self.blocks):
             x = blk(x)

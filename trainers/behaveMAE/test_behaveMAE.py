@@ -9,6 +9,9 @@ import joblib
 import numpy as np
 import torch
 import torch.nn as nn
+
+import torch.serialization
+
 from iopath.common.file_io import g_pathmgr as pathmgr
 from numpy.lib.stride_tricks import sliding_window_view
 from sklearn.decomposition import PCA, IncrementalPCA
@@ -26,8 +29,6 @@ from models.hbehaveMAE.util.logging import master_print as print
 from models.hbehaveMAE.util.misc import parse_tuples, str2bool
 from models.hbehaveMAE.util.pos_embed import interpolate_pos_embed
 
-import torch.serialization
-
 torch.serialization.add_safe_globals([argparse.Namespace])
 
 
@@ -37,9 +38,7 @@ def get_args_parser():
     parser.add_argument("--joints3d_procrustes", default=False, type=str2bool)
 
     parser.add_argument("--embedsum", default=False, type=str2bool, help="single embeddings will be summed up instead of concatenated",)
-
     parser.add_argument("--fast_inference", default=False, type=str2bool, help="if set, we do not perform any embedding averaging, but only take the middle embedding",)
-
     parser.add_argument("--combine_embeddings", default=False, type=str2bool, help="combine embeddings from different hierarchical levels and save them",)
     parser.add_argument("--fusion_head", default=False, type=str2bool, help="combined embeddings are created by (trained) fusion head",)
 
@@ -79,7 +78,6 @@ def get_args_parser():
     parser.add_argument("--init_embed_dim", default=48, type=int)
     parser.add_argument("--init_num_heads", default=2, type=int)
     parser.add_argument("--out_embed_dims", default=(32, 64, 96), nargs="+", type=int)
-
     parser.add_argument("--fill_holes", default=False, type=str2bool)
     parser.add_argument("--centeralign", action="store_true")
 
@@ -157,9 +155,7 @@ def load_fusion_head(args, model):
     else:
         checkpoint_model = checkpoint["model_state"]
 
-    checkpoint_model = {
-        k[25:]: v for k, v in checkpoint_model.items() if k.startswith("multi_scale_fusion_heads")
-    }
+    checkpoint_model = {k[25:]: v for k, v in checkpoint_model.items() if k.startswith("multi_scale_fusion_heads")}
     # load pre-trained model
     msg = multi_scale_fusion_heads.load_state_dict(checkpoint_model, strict=False)
     print(msg)
@@ -220,9 +216,8 @@ def extract_hierarchical_embeddings(args):
         for dataset_name in ["INH1", "INH2", "MOS1aD"]:
             data.append(raw_data[dataset_name]["data"]) #(num_sequences, 3600, 10, 3)
         data = np.concatenate(data, dtype=np.float32)
-        ############################
+
         ##### Force nan to num #####
-        ############################
         data = np.nan_to_num(data) #(123, 3600, 10, 3)
         num_samples = len(data)
         submission_clips["sequences"] = {i: data[i] for i in range(num_samples)}
@@ -290,19 +285,18 @@ def extract_hierarchical_embeddings(args):
         if args.fill_holes:
             vec_seq = fill_holes(vec_seq)
         vec_seq = vec_seq.reshape(vec_seq.shape[0], -1)
-        """
         if not (args.dataset == "shot7m2"):
             if args.dataset == "hbabel":
                 vec_seq = vec_seq.reshape(-1, 25, 3)
                 vec_seq = vec_seq[:, hbabel.hBABELDataset.NTU_KPT_GROUPING, :].reshape(len(vec_seq), -1)
             elif args.dataset == " mabe_mice":
                 vec_seq = mice.MABeMouseDataset._normalize(vec_seq, grid_size)
+        """
         if args.centeralign:
             vec_seq = vec_seq.reshape(vec_seq.shape[0], mice.NUM_MICE, 12, 2)
             vec_seq = mice.transform_to_centeralign_components(vec_seq)
         """
         full_seq_len = vec_seq.shape[0]
-
         # Pads the beginning and end of the sequence with duplicate frames
         vec_seq = vec_seq.reshape(vec_seq.shape[0], -1)
         if args.fast_inference:

@@ -35,7 +35,7 @@ class MocapDataset(BasePoseTrajDataset):
         mode: str, 
         path_to_data_dir: Path,
         datasets: List[str] | None = None, 
-        task: str = "CLB" , # FL2 or Tr
+        #task: str = "CLB" , # FL2 or Tr
         sampling_rate: int = 1,
         num_frames: int = 300,
         sliding_window: int = 149,
@@ -45,7 +45,7 @@ class MocapDataset(BasePoseTrajDataset):
         left_idx:     int = 3,       # default left hip
         right_idx:    int = 8,       # default right hip
         index_frame:  int = 149, 
-        #normalizer:    str = 'normal',
+        normalizer:    str = 'normal',
         model: str = "SkeletonMAE",
         split: dict = None, # whether to split dataset by mouse for train/val
         if_val: bool = False,   # When split is not None: if False, load mouse for training, if true, load mouse for validation mice
@@ -61,15 +61,14 @@ class MocapDataset(BasePoseTrajDataset):
         )
         self.mode = mode
         self.datasets = datasets or self.DEFAULT_DATASETS
-        self.task = task
+        #self.task = task
         self.augmentations = augmentations
-        self.left_idx      = left_idx
-        self.right_idx     = right_idx
         
-        if view_invariant:
-            self.vi  = ViewInvariant(index_frame = index_frame, left_idx = left_idx, right_idx = right_idx,)
-        # self.norm = Normalize() if normalizer == 'normal' else NormalizeCube()
-        
+        self.view_invariant = view_invariant
+        self.vi  = ViewInvariant(index_frame = index_frame, left_idx = left_idx, right_idx = right_idx,)
+        self.left_idx = left_idx
+        self.right_idx = right_idx
+        self.normalizer = normalizer
         if augmentations:
             self.augmentations = transforms.Compose([GaussianNoise(p=0.5),])
         
@@ -103,37 +102,56 @@ class MocapDataset(BasePoseTrajDataset):
             for mouse_name in mice:
                 sequences = self.raw_data[dataset_name][mouse_name]["data"] #(num_sequences, 3600, 10, 3)
                 num_sequences = len(sequences)
-                if self.mode == "pretrain":
+                #if self.mode == "pretrain":
+                if True:
                     for i in range(num_sequences_total, num_sequences_total + num_sequences):
                         vec_seq = sequences[i-num_sequences_total]
                         # Pads the beginning and end of the sequence with duplicate frames
                         pad_vec = np.pad(vec_seq, ((sub_seq_length// 2, sub_seq_length - sub_seq_length // 2), (0, 0), (0, 0)), mode="edge", )
+                        """
+                        # normalize and make view-invariant on the whole sequence before extracting subsequences
+                        if self.view_invariant:
+                            pad_vec, _, _  = self.vi(pad_vec, x_supp=(),)
+                        if self.normalizer == 'normal':
+                            pad_vec, _, _ = self.mocap_normalize(pad_vec)
+                        elif self.normalizer == 'cube':
+                            pad_vec, _, _ = self.normalize_cube(pad_vec)
+                        """
                         seq_keypoints.append(pad_vec)
                         # For extracting subsequenes
-                        keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])  
-                
+                        keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])
+                """
                 else: #self.mode in ["compute_representations","linprobe", "finetune"]:
                     for i in range(num_sequences_total, num_sequences_total + num_sequences):
                         vec_seq = sequences[i-num_sequences_total]
                         seq_keypoints.append(vec_seq)
                         keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(vec_seq), self.sliding_window)])
-
+                """
                 num_sequences_total += num_sequences
         
         self.num_sequences = num_sequences_total
         self.seq_keypoints = np.array(seq_keypoints, dtype=np.float32) # numpy array: [num_sequences, T/5 + pad_vect, 10, 3]
         self.keypoints_ids = keypoints_ids
+        print(self.num_sequences)
+        print(len(self.keypoints_ids))
 
         del self.raw_data
 
         
     def featurise_keypoints(self, keypoints):
         # Step 2: Apply ViewInvariant → Normalize to a single subsequence.
-        if self.model == "SkeletonMAE":
-            keypoints = keypoints.reshape(-1, 10, 3)
-            
-        seq, _, _  = self.vi(keypoints,   x_supp=(),)
-        seq, _, _ = self.mocap_normalize(seq)
+        #if self.model == "SkeletonMAE":
+        seq = keypoints.reshape(-1, 10, 3)
+        if self.interp_holes:
+            seq = self.fill_holes(seq)
+        
+        if self.view_invariant:
+            seq, _, _  = self.vi(seq, x_supp=(),)
+        if self.normalizer == 'normal':
+            seq, _, _ = self.mocap_normalize(seq)
+        elif self.normalizer == 'cube':
+            seq, _, _ = self.normalize_cube(seq)
+        
         seq = torch.tensor(seq, dtype=torch.float32)
         
         if self.model == "SkeletonMAE":
@@ -205,25 +223,52 @@ class MocapDataset(BasePoseTrajDataset):
         """Inverse of normalize_cube: restore original coordinate range."""
         min_ = np.array(min_)
         max_ = np.array(max_)
-
         if min_.ndim == 2:                            # (B, 3) → (B, 1, 1, 3)
             min_ = min_[:, None, None, :]
             max_ = max_[:, None, None, :]
-
-        amplitude = np.max(max_ - min_, axis=-1, keepdims=True)
-        center    = (min_ + max_) / 2
+            amplitude = np.max(max_ - min_, axis=-1, keepdims=True)  # (B, 1, 1, 1)
+        else:                                       # (3,) → (1, 1, 3)
+            amplitude = np.max(max_ - min_, axis=-1, keepdims=True)
+        center   = (min_ + max_) / 2
 
         return amplitude / 2 * x + center
     
 
-    def prepare_subsequence_sample(self, sequence: np.ndarray):
+    def fill_holes(self, sequence):
+        """Interpolate NaN holes in a single sequence (T, J, 3) using linear interpolation along the time axis."""
+        filled = sequence.copy()
+        for j in range(self.NUM_KEYPOINTS):
+            for c in range(self.KPTS_DIMENSIONS):
+                values = filled[:, j, c]
+                valid = ~np.isnan(values)
+                if np.sum(valid) == 0:  # completely missing keypoint or no missing → skip (leave as NaN, to be handled by model or loss)
+                    continue
+                first_valid = np.where(valid)[0][0]
+                if first_valid > 0:  # leading holes → fill with first valid value
+                    filled[:first_valid, j, c] = values[first_valid]
+                for i in range(1, self.max_keypoints_len):
+                    if not valid[i]:  # hole → fill with last valid value
+                        filled[i, j, c] = filled[i-1, j, c]
+                """
+                filled[:, j, c] = np.interp(
+                    np.arange(self.max_keypoints_len),
+                    np.where(valid)[0],
+                    values[valid]
+                )
+                """
+        return filled
+    
+
+
+    def prepare_subsequence_sample(self, sequence: np.ndarray):  # sequence (300, 10, 3)
         """Returns one training sample"""
         if self.augmentations:
             sequence = sequence.reshape(self.max_keypoints_len, *self.KEYFRAME_SHAPE)
             sequence = self.augmentations(sequence)
             sequence = sequence.reshape(self.max_keypoints_len, -1)
         feats = self.featurise_keypoints(sequence) # [300, 1, 10, 3]
-        #feats = feats.reshape(self.max_keypoints_len, self.NUM_INDIVIDUALS, -1) # [300, num_ind, num_joints* 2d] flatten for behaveMAE
+        if self.model == "behaveMAE":
+            feats = feats.reshape(self.max_keypoints_len, self.NUM_INDIVIDUALS, -1) # [300, num_ind, num_joints* 2d] flatten for behaveMAE
 
         return feats
     

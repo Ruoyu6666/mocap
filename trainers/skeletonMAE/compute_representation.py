@@ -98,7 +98,7 @@ def get_args_parser():
     """SkeletonMAE Model Hyperparameters"""
     parser.add_argument('--dim_in', default=3, type=int, help='input dimension')
     parser.add_argument('--dim_feat', default=192, type=int, help='feature dimension')
-    parser.add_argument('--decoder_dim_feat', default=192, type=int, help='decoder feature dimension')
+    parser.add_argument('--decoder_dim_feat', default=256, type=int, help='decoder feature dimension')
     parser.add_argument('--depth', default=6, type=int, help='number of layers in the encoder')
     parser.add_argument('--decoder_depth', default=1, type=int, help='number of layers in the decoder')
     parser.add_argument('--num_heads', default=8,  type=int, help='number of attention heads')
@@ -106,7 +106,7 @@ def get_args_parser():
     parser.add_argument('--num_frames', default=300, type=int, help='number of frames in the input skeleton sequence')
     parser.add_argument('--num_joints', default=10, type=int, help='number of joints in the input skeleton sequence')
     parser.add_argument('--patch_size', default=1, type=int, help='spatial patch size (number of joints per patch)')
-    parser.add_argument('--t_patch_size', default=3, type=int, help='temporal patch size (number of frames per patch)')
+    parser.add_argument('--t_patch_size', default=2, type=int, help='temporal patch size (number of frames per patch)')
     parser.add_argument('--qkv_bias', action='store_true', help='if True, add a learnable bias to query, key, value')
     parser.add_argument('--qk_scale', default=None, type=float, help='override default qk scale of head_dim ** -0.5 if set')
     parser.add_argument('--drop_rate', default=0., type=float, help='dropout rate')
@@ -118,11 +118,11 @@ def get_args_parser():
     
     """Dataset and DataLoader parameters"""
     parser.add_argument("--dataset",  type=str, default='mocap')
-    parser.add_argument("--task",  type=str, default='CLB')
-    parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/mocap/data/mocap/data_CLB.pkl')
-    parser.add_argument("--sliding_window", default=99, type=int)
+    #parser.add_argument("--task",  type=str, default='FL2')
+    parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/mocap/data/mocap/data_FL2.pkl')
+    parser.add_argument("--sliding_window", default=60, type=int)
     parser.add_argument("--sampling_rate", default=1, type=int)
-    parser.add_argument("--fill_holes", default=False, type=str2bool)
+    parser.add_argument("--interp_holes", default=False, type=str2bool)
     parser.add_argument("--split", default=None, type=dict) 
     #parser.add_argument("--cache_path", type=str, default='../data/tmp/mabe_mouse_train.pkl')
     #parser.add_argument("--cache", default=False, type=str2bool) # if true cache processed data or load from cache
@@ -132,6 +132,7 @@ def get_args_parser():
     
     """Dataset augmentation and preprocessing"""
     parser.add_argument("--data_augment", default=False, type=str2bool)
+    parser.add_argument("--view_invariant", default=True, type=str2bool)
     parser.add_argument("--centeralign", action="store_true")       # for mabe mice dataset
     parser.add_argument("--include_testdata", action="store_true")  # for mabe mice dataset
 
@@ -151,27 +152,28 @@ def get_args_parser():
     parser.add_argument("--save_dir", type=str, default="./outputs/") #  models, results, checkpoints
     
     # model path for computing representation
-    parser.add_argument("--model_path", type=str, default="/home/rguo_hpc/myfolder/mocap/outputs/checkpoints/mae_checkpoint_epoch_25.pth")
+    parser.add_argument("--model_path", type=str, default="/home/rguo_hpc/myfolder/mocap/outputs/checkpoints/mae_checkpoint_epoch_40.pth")
     
     """Type of job"""
     parser.add_argument("--if_val", type=str2bool, default=False) # whether to compute representations for validation set (if False, compute for training set)
     parser.add_argument("--job", type=str, default="compute_representations", choices=["pretrain", "compute_representations","linprobe", "finetune"])
-    parser.add_argument("--fast_inference",default=True)
+    parser.add_argument("--fast_inference",default=False, type=str2bool)
     return parser.parse_args()
 
 
 
 
 # fast inference to compute representations for all sequences in the dataset and save as .npy file
-def compute_representations(model,data_loader, device, args, num_sequences):
+def compute_representations(model,data_loader, device, args):
     os.makedirs(args.save_dir + '/representations', exist_ok=True)
     model = model.to(device)
     model.eval()
     all_representations = []
-    
+    num_sequences = data_loader.dataset.num_sequences
+
     if args.fast_inference:
         with torch.no_grad():
-            for i, (x, _)  in enumerate(data_loader):
+            for i, (x, _)  in enumerate(tqdm(data_loader)):
                 x = x.to(device)
                 latent = model(x)      # (N, T, C)
                 all_representations.append(torch.squeeze(latent).cpu().numpy())
@@ -180,25 +182,25 @@ def compute_representations(model,data_loader, device, args, num_sequences):
 
         all_representations = np.concatenate(all_representations, axis=0)
         all_representations = all_representations.reshape(num_sequences, -1, args.dim_feat) # (N, T, C)
-    #### to be completed: non-fast inference that averages representations for overlapping subsequences to get representation for the whole sequence
+    
     else:
-        full_len = data_loader.dataset.seq_keypoints.shape[1]
-        starts = list(range(0, full_len - args.num_frames + 1, args.sliding_window))
-        repr_sum = torch.zeros(num_sequences, int(full_len/3), args.dim_feat)
-        count_sum = torch.zeros(num_sequences, int(full_len/3), 1)
-        
-        
-        for i, (x, _)  in enumerate(tqdm(data_loader)): # i, index of the batch; x, batch of subsequences; keypoints_id, list of tuples (seq_id, start_idx) for each subsequence in the batch
-            keypoints_id = data_loader.dataset.keypoints_ids[i*args.batch_size:(i+1)*args.batch_size] # list of tuples (seq_id, start_idx) for each subsequence in the batch
-            x = x.to(device)
-            latent = model(x)      # (N, T, C)
-            latent = torch.squeeze(latent).cpu().detach().numpy() # (N, T, C)
-
-            for j in range(len(keypoints_id)):
-                seq_id, start_idx = keypoints_id[j]
-                repr_sum[seq_id, start_idx:start_idx+100] += torch.from_numpy(latent[j])
-                count_sum[seq_id, start_idx:start_idx+100] += 1
-        all_representations = repr_sum / count_sum # (N, T, C)
+        full_len = data_loader.dataset.seq_keypoints.shape[1] # length of the full sequence (after padding if applicable)
+        #starts = list(range(0, full_len - args.num_frames + 1, args.sliding_window))
+        repr_sum = torch.zeros(num_sequences, int(full_len/args.t_patch_size), args.dim_feat)
+        count_sum = torch.zeros(num_sequences, int(full_len/args.t_patch_size), 1)
+        with torch.no_grad():
+             for i, (x, _)  in enumerate(tqdm(data_loader)): # i, index of the batch; x, batch of subsequences;
+                keypoints_id = data_loader.dataset.keypoints_ids[i*args.batch_size:(i+1)*args.batch_size] # list of tuples (seq_id, start_idx) for each subsequence in the batch
+                x = x.to(device) # [B, 300, 1, 10, 3]
+                latent = model(x)# (B, 100, D)
+                latent = torch.squeeze(latent).cpu().detach().numpy() # (B, 100, D)
+                latent_len = latent.shape[1]
+                for j in range(len(keypoints_id)):
+                        seq_id, start_idx = keypoints_id[j]
+                        start_idx = int(start_idx/args.t_patch_size) # convert from frame index to index in the representation (since representation is 1 per 3 frames)
+                        repr_sum[seq_id, start_idx:start_idx+latent_len] += torch.from_numpy(latent[j])
+                        count_sum[seq_id, start_idx:start_idx+latent_len] += 1
+                all_representations = repr_sum / count_sum # (N, T, C)
     
     if args.if_val:
         np.save(args.save_dir + '/representations/mae_'+ args.dataset +'_val.npy', all_representations)
@@ -221,20 +223,19 @@ if __name__ == "__main__":
                                         num_frames=args.num_frames, 
                                         sliding_window=args.num_frames-1,
                                         if_fill=args.fill_holes,
-                                        # cache_path=args.cache_path, cache=False,
                                         augmentations=None,
                                         include_testdata=True,)
         elif args.dataset == "mocap":
             dataset = MocapDataset(mode = args.job,
                                 path_to_data_dir = args.path_to_data_dir,
                                 datasets = ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"],
-                                task = args.task , # FL2 or Tr
+                                #task = args.task , # FL2 or Tr
                                 sampling_rate=args.sampling_rate,
                                 num_frames=args.num_frames,
                                 sliding_window=args.num_frames if args.fast_inference else args.sliding_window,
-                                fill_holes=args.fill_holes,
+                                interp_holes=args.interp_holes,
                                 augmentations=args.data_augment,
-                                view_invariant = True, 
+                                view_invariant = args.view_invariant, 
                                 left_idx = 3,       # default left hip
                                 right_idx = 8,       # default right hip
                                 index_frame = 149, 
@@ -242,7 +243,6 @@ if __name__ == "__main__":
                                 split = fold_1, # whether to split dataset by mouse for train/val
                                 if_val = args.if_val,)
             
-            num_sequences = dataset.seq_keypoints.shape[0]
 
         loader = DataLoader(dataset, #sampler=sampler_test, 
                             batch_size=args.batch_size, 
@@ -276,5 +276,5 @@ if __name__ == "__main__":
         # load pre-trained model
         model.load_state_dict(checkpoint_model, strict=False)
 
-        compute_representations(model, loader, device, args, num_sequences)
+        compute_representations(model, loader, device, args)
     

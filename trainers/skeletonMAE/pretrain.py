@@ -40,7 +40,42 @@ fold_1 = {
     "MOS1aD": {"train": ["M5", "M6", "M8", "M9", "M10"],
                "valid": ["M4"]}}
 
-
+fold_2 = {
+    "CP1A": {"train": ["M1", "M15", "M19"], 
+            "valid": ["M14"]},
+    "CP1B": {"train": ["M1", "M3", "M4", "M5", "M6"], 
+            "valid": ["M2"]},
+    "INH1": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10"],
+            "valid": ["M2", "M7"]},
+    "INH2": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10", "M11"],
+            "valid": ["M2", "M7", "M12"]},
+    "MOS1aD": {"train": ["M4", "M6", "M8", "M9", "M10"],
+                "valid": ["M5"]}
+}
+fold_3 = {
+    "CP1A": {"train": ["M1", "M14", "M19"], 
+            "valid": ["M15"]},
+    "CP1B": {"train": ["M1", "M2", "M4", "M5", "M6"], 
+            "valid": ["M3"]},
+    "INH1": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M10"],
+            "valid": ["M3", "M8"]},
+    "INH2": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M11", "M12"],
+            "valid": ["M3", "M8", "M10"]},
+    "MOS1aD": {"train": ["M4", "M5", "M8", "M9", "M10"],
+                "valid": ["M6"]}
+}
+fold_4 = {
+    "CP1A": {"train": ["M1", "M14", "M15"], 
+            "valid": ["M19"]},
+    "CP1B": {"train": ["M1", "M2", "M3", "M5", "M6"], 
+            "valid": ["M4"]},
+    "INH1": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10"],
+            "valid": ["M4", "M9"]},
+    "INH2": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10", "M12"],
+            "valid": ["M4", "M9", "M11"]},
+    "MOS1aD": {"train": ["M4", "M5", "M6", "M9", "M10"],
+            "valid": ["M8"]}
+}
 
 
 
@@ -52,7 +87,7 @@ def get_args_parser():
     """SkeletonMAE Model Hyperparameters"""
     parser.add_argument('--dim_in', default=3, type=int, help='input dimension')
     parser.add_argument('--dim_feat', default=192, type=int, help='feature dimension')
-    parser.add_argument('--decoder_dim_feat', default=192, type=int, help='decoder feature dimension')
+    parser.add_argument('--decoder_dim_feat', default=256, type=int, help='decoder feature dimension')
     parser.add_argument('--depth', default=6, type=int, help='number of layers in the encoder')
     parser.add_argument('--decoder_depth', default=1, type=int, help='number of layers in the decoder')
     parser.add_argument('--num_heads', default=8,  type=int, help='number of attention heads')
@@ -60,7 +95,7 @@ def get_args_parser():
     parser.add_argument('--num_frames', default=300, type=int, help='number of frames in the input skeleton sequence')
     parser.add_argument('--num_joints', default=10, type=int, help='number of joints in the input skeleton sequence')
     parser.add_argument('--patch_size', default=1, type=int, help='spatial patch size (number of joints per patch)')
-    parser.add_argument('--t_patch_size', default=3, type=int, help='temporal patch size (number of frames per patch)')
+    parser.add_argument('--t_patch_size', default=2, type=int, help='temporal patch size (number of frames per patch)')
     parser.add_argument('--qkv_bias', action='store_true', help='if True, add a learnable bias to query, key, value')
     parser.add_argument('--qk_scale', default=None, type=float, help='override default qk scale of head_dim ** -0.5 if set')
     parser.add_argument('--drop_rate', default=0., type=float, help='dropout rate')
@@ -72,21 +107,20 @@ def get_args_parser():
     
     """Dataset and DataLoader parameters"""
     parser.add_argument("--dataset",  type=str, default='mocap')
-    parser.add_argument("--task",  type=str, default='CLB')
-    parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/mocap/data/mocap/data_CLB.pkl')
-    parser.add_argument("--sliding_window", default=59, type=int)
+    parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/mocap/data/mocap/data_FL2.pkl')
+    parser.add_argument("--sliding_window", default=60, type=int)
     parser.add_argument("--sampling_rate", default=1, type=int)
-    parser.add_argument("--fill_holes", default=False, type=str2bool)
-    parser.add_argument("--split", default=None, type=dict) 
-    parser.add_argument("--if_val", type=str2bool, default=False)
-    #parser.add_argument("--cache_path", type=str, default='../data/tmp/mabe_mouse_train.pkl')
+    parser.add_argument("--interp_holes", default=False, type=str2bool)
+    #parser.add_argument("--split", default=None, type=dict) 
+    # parser.add_argument("--if_val", type=str2bool, default=False)
 
     # In foward function of STTFormer
-    parser.add_argument('--mask_ratio', default=0.8, type=float, help='Masking ratio (percentage of removed patches).')
+    parser.add_argument('--mask_ratio', default=0.7, type=float, help='Masking ratio (percentage of removed patches).')
     
     """Dataset augmentation and preprocessing"""
     parser.add_argument("--data_augment", default=False, type=str2bool)
-    parser.add_argument("--centeralign", action="store_true")       # for mabe mice dataset
+    parser.add_argument("--view_invariant", default=True, type=str2bool)
+    parser.add_argument("--centeralign", default=False, type=str2bool)       # for mabe mice dataset
     parser.add_argument("--include_testdata", action="store_true")  # for mabe mice dataset
 
     parser.add_argument("--num_workers", default=8, type=int)
@@ -94,21 +128,24 @@ def get_args_parser():
     
     """Training parameters"""
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--epochs", type=int, default=40)
+    parser.add_argument("--lr", type=float, default=5e-5)
     parser.add_argument('--blr', type=float, default=1e-3, metavar='LR', help='base learning rate: absolute_lr = base_lr * total_batch_size / 256')
     parser.add_argument('--min_lr', type=float, default=0., metavar='LR', help='lower lr bound for cyclic schedulers that hit 0')
-    parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
+    parser.add_argument('--weight_decay', type=float, default=0.001, help='weight decay (default: 0.05)')
 
     """Saving and logging"""
     parser.add_argument("--log_interval", type=int, default=100)
     parser.add_argument("--save_dir", type=str, default="./outputs/") #  models, results, checkpoints
     parser.add_argument("--ckpt_path", type=str, default=None) # checkpoint path for resuming training
     
+    parser.add_argument("--if_test", type=str2bool, default=False, help="Whether to run test after each training epoch.")
     """Type of job"""
     parser.add_argument("--job", type=str, choices=["pretrain", "compute_representations","linprobe", "finetune"])
 
     return parser.parse_args()
+
+
 
 
 def train_one_epoch(model: torch.nn.Module, loader_train: Iterable, optimizer: torch.optim.Optimizer,
@@ -166,41 +203,41 @@ def main(args):
         dataset_train = MocapDataset(mode = args.job,
                                     path_to_data_dir=args.path_to_data_dir,
                                     datasets = ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"],
-                                    task = args.task , # CLB, FL2 or Tr
+                                    #task = args.task , # CLB, FL2 or Tr
                                     sampling_rate=args.sampling_rate,
                                     num_frames=args.num_frames,
                                     sliding_window=args.sliding_window,
-                                    fill_holes=args.fill_holes,
+                                    interp_holes=args.interp_holes,
                                     augmentations=args.data_augment,
-                                    view_invariant = True, 
+                                    view_invariant = args.view_invariant, 
                                     left_idx = 3,       # default left hip
                                     right_idx = 8,       # default right hip
                                     index_frame = 149,
                                     model = "SkeletonMAE",
-                                    split=fold_1,
+                                    split=None,
                                     if_val=False)
-        dataset_test = MocapDataset(mode = args.job,
-                                    path_to_data_dir=args.path_to_data_dir,
-                                    datasets = ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"],
-                                    task = args.task , # CLB, FL2 or Tr
-                                    sampling_rate=args.sampling_rate,
-                                    num_frames=args.num_frames,
-                                    sliding_window=args.sliding_window,
-                                    fill_holes=args.fill_holes,
-                                    augmentations=False,
-                                    view_invariant = True, 
-                                    left_idx = 3,       # default left hip
-                                    right_idx = 8,       # default right hip
-                                    index_frame = 149,
-                                    model = "SkeletonMAE",
-                                    split=fold_1,
-                                    if_val=True)
         loader_train = DataLoader(dataset_train, #sampler=sampler_train,
                                  batch_size=args.batch_size, num_workers=args.num_workers,
                                  pin_memory=args.pin_mem, drop_last=True,)
-        loader_test = DataLoader(dataset_test, #sampler=sampler_test,
-                                 batch_size=args.batch_size, num_workers=args.num_workers,
-                                 pin_memory=args.pin_mem, drop_last=False,)
+        if args.if_test:
+                dataset_test = MocapDataset(mode = args.job,
+                                        path_to_data_dir=args.path_to_data_dir,
+                                        datasets = ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"],
+                                        sampling_rate=args.sampling_rate,
+                                        num_frames=args.num_frames,
+                                        sliding_window=args.sliding_window,
+                                        interp_holes=args.interp_holes,
+                                        augmentations=False,
+                                        view_invariant = True, 
+                                        left_idx = 3,       # default left hip
+                                        right_idx = 8,       # default right hip
+                                        index_frame = 149,
+                                        model = "SkeletonMAE",
+                                        split=fold_2,
+                                        if_val=True)
+                loader_test = DataLoader(dataset_test, #sampler=sampler_test,
+                                        batch_size=args.batch_size, num_workers=args.num_workers,
+                                        pin_memory=args.pin_mem, drop_last=False,)
     if args.job == "pretrain":
         """Set up model for pretrain"""
         model = SkeletonMAE(dim_in=args.dim_in,
@@ -245,7 +282,9 @@ def main(args):
     print('Number of epochs to train:', num_epochs)
     for epoch in range(start_epoch + 1, args.epochs+1):
         train_one_epoch(model, loader_train, optimizer, device, epoch, loss_scaler=None, log_writer=None, args=args)
-        test(model, loader_test, device, log_writer=None, args=args)
+        
+        if args.if_test:
+            test(model, loader_test, device, log_writer=None, args=args)
         if args.save_dir and ((epoch % 5 == 0 or epoch == args.epochs)):
             checkpoint_path = os.path.join(args.save_dir, 'checkpoints', f'mae_checkpoint_epoch_{epoch}.pth')
             torch.save({'epoch': epoch,
@@ -254,8 +293,6 @@ def main(args):
             print(f"Checkpoint saved at {checkpoint_path}")
     save_model(model, optimizer, args)
     print(f"Model saved at {args.save_dir}/models/")
-    #save_results(results, args)
-
 
 
 if __name__ == "__main__":

@@ -83,8 +83,6 @@ class STTFEncoder(nn.Module):
         elif protocol == 'finetune':
             self.head = ActionHeadFinetune(dropout_ratio=0.3, dim_feat=dim_feat, num_classes=num_classes)
         """
-        elif protocol == 'compute_representations': # only compute representaton no training
-            self.head == None
         # maybe we can also add a protocol for linear probing with temporal pooling, 
         # i.e., pool the features across time and joints and then apply a linear classifier. 
         # This may be more effective for action recognition than the current linprobe protocol which applies linear classifier on each joint separately and then averages the predictions across joints. We can call this protocol 'linprobe_temporal_pooling' or something like that.
@@ -131,7 +129,6 @@ class STTFEncoder(nn.Module):
         
         x = self.norm(x)
         x = x.reshape(N, M, TP, VP, -1) # (B, 3, 100, 12, C)
-
         if self.protocol == "compute_representations":
             x = x.permute(0, 1, 2, 4, 3)  # (N, M, T, C, J)
             x = x.mean(dim=-1)            # (N, M, T, C) # calculate representation of each frame by averaging across joints
@@ -139,5 +136,6 @@ class STTFEncoder(nn.Module):
         
         else:
             x = self.head(x)
+
 
         return x

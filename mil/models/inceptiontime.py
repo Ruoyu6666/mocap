@@ -39,7 +39,7 @@ class InceptionModule(nn.Module):
 
         # Set up conv layers but don't stack sequentially as these will be run in parallel
         self.conv_layers = nn.ModuleList()
-        for kernel_size in [10, 20, 40]:
+        for kernel_size in [10, 20, 30]:
             self.conv_layers.append(
                 nn.Conv1d(
                     in_channels=bottleneck_channels,
@@ -85,7 +85,9 @@ class InceptionBlock(nn.Module):
     """Inception block of three Inception modules, where each module has a residual connection."""
 
     def __init__(
-        self, in_channels: int, out_channels: int = 32,
+        self, 
+        in_channels: int, 
+        out_channels: int = 32,
         bottleneck_channels: int = 32,
         padding_mode: str = "replicate",
         n_modules: int = 3,

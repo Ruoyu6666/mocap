@@ -106,7 +106,6 @@ class MABeMouseDataset(BasePoseTrajDataset):
         # frame_number_map, label_array, vocabulary, task_type
         self.labels = np.load(os.path.join(self.path, "mouse_triplets_test_labels.npy"), allow_pickle=True).item()
 
-
     def featurise_keypoints(self, keypoints):
         keypoints = self.normalize(keypoints)
         if self.centeralign:

@@ -3,7 +3,7 @@
 GPUS=$1
 
 common_args="--dataset mocap \
-    --path_to_data_dir /home/rguo_hpc/myfolder/code/mocap/data/data_CLB.pkl \
+    --path_to_data_dir /home/rguo_hpc/myfolder/mocap/data/mocap/data_CLB.pkl \
     --batch_size 64 \
     --model hbehavemae \
     --input_size 300 1 30 \

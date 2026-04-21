@@ -120,22 +120,23 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
     @staticmethod
     def fill_holes(data):
         clean_data = copy.deepcopy(data)
-        num_individuals = clean_data.shape[1]
+        num_frames, num_individuals = clean_data.shape[:2]
+
         for m in range(num_individuals):
             holes = np.where(clean_data[0, m, :, 0] == 0)
-            if not holes:
+            if holes.size == 0:
                 continue
             for h in holes[0]:
                 sub = np.where(clean_data[:, m, h, 0] != 0)
                 if sub and sub[0].size > 0:
                     clean_data[0, m, h, :] = clean_data[sub[0][0], m, h, :]
-                # else:
-                #     return np.empty((0))
+                else:
+                    return np.empty((0))
 
         for fr in range(1, np.shape(clean_data)[0]):
-            for m in range(3):
+            for m in range(num_individuals):
                 holes = np.where(clean_data[fr, m, :, 0] == 0)
-                if not holes:
+                if holes.size == 0:
                     continue
                 for h in holes[0]:
                     clean_data[fr, m, h, :] = clean_data[fr - 1, m, h, :]
