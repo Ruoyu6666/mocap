@@ -27,9 +27,7 @@ class GaussianNoise:
 
     def __call__(self, keypoints: np.ndarray) -> np.ndarray:
         if np.random.random() < self.p:
-            noise = np.random.normal(self.mu, self.sigma, keypoints.shape).astype(
-                np.float32
-            )
+            noise = np.random.normal(self.mu, self.sigma, keypoints.shape).astype(np.float32)
             noisy_kpts = keypoints.copy()
             noisy_kpts = noisy_kpts + noise
             return noisy_kpts
@@ -110,6 +108,8 @@ class Rotation:
             return original
 
 
+
+
 class Reflect:
     def __init__(self, grid_size, p=0.5) -> None:
         self.p = p
@@ -136,9 +136,7 @@ class Reflect:
             return keypoints
 
         if np.random.random() > 0.5:
-            new_keypoints = self.reflect_points(
-                keypoints, 0, 1, -self.grid_size[1] // 2
-            )
+            new_keypoints = self.reflect_points(keypoints, 0, 1, -self.grid_size[1] // 2)
         else:
             new_keypoints = self.reflect_points(keypoints, 1, 0, -self.grid_size[0] // 2)
         return new_keypoints
