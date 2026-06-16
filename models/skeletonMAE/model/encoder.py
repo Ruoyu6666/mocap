@@ -51,7 +51,7 @@ class ActionHeadFinetune(nn.Module):
 
 class STTFEncoder(nn.Module):
     def __init__(self, dim_in=3, num_classes=3, dim_feat=256, depth=5, 
-                 num_heads=8, mlp_ratio=4, num_frames=120, num_joints=25, patch_size=1, t_patch_size=4,
+                 num_heads=8, mlp_ratio=4, num_frames=120, num_joints=25, patch_size=1, t_patch_size=3,
                  qkv_bias=True, qk_scale=None, drop_rate=0., 
                  attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm, 
                  protocol='linprobe'): # ["pretrain", "compute_representations","linprobe", "finetune"]
@@ -114,8 +114,7 @@ class STTFEncoder(nn.Module):
         #N, C, T, V, M = x.shape # [32, 300, 3, 12, 2]
         #x = x.permute(0, 4, 2, 3, 1).contiguous().view(N * M, T, V, C)
         
-        # Modified for mabe dataset
-        N, T, M, V, C = x.shape # for mabe dataset, M is number of mice. (batch_size, T, 3, V=12, C=2)
+        N, T, M, V, C = x.shape # Modified for mabe dataset, M is number of mice. (batch_size, T, 3, V=12, C=2)
         x = x.permute(0, 2, 1, 3, 4).contiguous().view(-1, T, V, C)
         
         
