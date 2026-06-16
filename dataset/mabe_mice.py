@@ -37,10 +37,8 @@ class MABeMouseDataset(BasePoseTrajDataset):
     TAIL_BASE = "tail_base"
     TAIL_MIDDLE = "tail_middle"
     TAIL_TIP = "tail_tip"
-    STR_BODY_PARTS = [
-        NOSE, EAR_LEFT, EAR_RIGHT, NECK, FOREPAW_LEFT, FOREPAW_RIGHT,
-        CENTER, HINDPAW_LEFT, HINDPAW_RIGHT, TAIL_BASE, TAIL_MIDDLE, TAIL_TIP,
-    ]
+    STR_BODY_PARTS = [NOSE, EAR_LEFT, EAR_RIGHT, NECK, FOREPAW_LEFT, FOREPAW_RIGHT,
+                    CENTER, HINDPAW_LEFT, HINDPAW_RIGHT, TAIL_BASE, TAIL_MIDDLE, TAIL_TIP,]
     BODY_PART_2_INDEX = {w: i for i, w in enumerate(STR_BODY_PARTS)}
 
     def __init__(
