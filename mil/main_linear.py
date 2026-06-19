@@ -56,13 +56,11 @@ fold_4 = {
 parser = argparse.ArgumentParser(description='time classification by TimeMIL')
 parser.add_argument('--label', default="drug", type=str, help='dataset ')
 
-Xtr = np.load("/home/rguo_hpc/myfolder/code/mocap/outputs/representations/fold_1/mae_mocap_tr.npy", allow_pickle=True)
-Xtr= Xtr.reshape(158, 1200, -1)
-Xte = np.load("/home/rguo_hpc/myfolder/code/mocap/outputs/representations/fold_1/mae_mocap_val.npy", allow_pickle=True)
-Xte= Xte.reshape(44, 1200, -1)
-with open("/home/rguo_hpc/myfolder/code/mocap/data/mocap/data_CLB.pkl", 'rb') as file:
+Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/CLB/mae_mocap_tr_f1.npy", allow_pickle=True)
+Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/CLB/mae_mocap_val_f1.npy", allow_pickle=True)
+with open("/home/rguo_hpc/myfolder/data/mocap/data_CLB.pkl", 'rb') as file:
     data = pickle.load(file)
-
+        
 
 args = parser.parse_args()
 if args.label == "drug":
@@ -75,31 +73,52 @@ if args.label == "drug":
                        drug_te = drug_te + data[dataset_name][mouse_name]["drug"]
         
         mapping = {s: i for i, s in enumerate(set(drug_tr))}
-
         ytr = [mapping[s] for s in drug_tr]
         yte = [mapping[s] for s in drug_te]
         y_train = np.array(ytr)
         y_test = np.array(yte)
+        
 if args.label == "experiment":
         expe_tr = []
         expe_te = []
         for dataset_name in ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"]:
                 for mouse_name in fold_1[dataset_name]["train"]:
-                       expe_tr = expe_tr + dataset_name
+                       expe_tr = expe_tr + [dataset_name]* len(data[dataset_name][mouse_name]["drug"])
                 for mouse_name in fold_1[dataset_name]["valid"]:
-                       expe_te = expe_te + dataset_name
+                       expe_te = expe_te + [dataset_name]* len(data[dataset_name][mouse_name]["drug"])
         
         mapping = {s: i for i, s in enumerate(set(expe_tr))}
+        print(mapping)
         ytr = [mapping[s] for s in expe_tr]
         yte = [mapping[s] for s in expe_te]
         y_train = np.array(ytr)
         y_test = np.array(yte)
 
+if args.label == "type":
+       type_tr = []
+       type_te = []
+       for dataset_name in ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"]:
+               for mouse_name in fold_1[dataset_name]["train"]:
+                     type_tr = type_tr + data[dataset_name][mouse_name]["type"]
+               for mouse_name in fold_1[dataset_name]["valid"]:
+                     type_te = type_te + data[dataset_name][mouse_name]["type"]
+        
+       mapping = {s: i for i, s in enumerate(set(type_tr))}
+       print(mapping)
+       ytr = [mapping[s] for s in type_tr]
+       yte = [mapping[s] for s in type_te]
+       y_train = np.array(ytr)
+       y_test = np.array(yte)
+
+
 # ---- Step 1: Reduce time dimension ----
 # Mean pooling across timestamps
 X_train_reduced = Xtr.mean(axis=1)   # shape: (150, 192)
 X_test_reduced = Xte.mean(axis=1)     # shape: (50, 192)
-
+print(X_train_reduced.shape)
+print(X_test_reduced.shape)
+print(y_train.shape)
+print(y_test.shape)
 # ---- Step 2: Train simple regression model ----
 model = LogisticRegression(max_iter=1000, multi_class='multinomial')
 
