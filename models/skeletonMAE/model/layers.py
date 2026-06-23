@@ -92,7 +92,7 @@ class SkeleEmbed(nn.Module):
         assert (T == self.num_frames), f"Input skeleton length ({T}) doesn't match model ({self.num_frames})."
         x = self.proj(x)                   # [N, dim_feature, T//t_patch_size, V//patch_size]
         x = torch.einsum("ncts->ntsc", x)  # [N, T, V, C] -> [N, T//t_patch_size, V//patch_size, dim_feature]
-        return x # [3B, 100, 12, 128]
+        return x
 
 
 
@@ -122,7 +122,7 @@ class Attention(nn.Module):
         self.num_heads = num_heads
         head_dim = dim // num_heads
         # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
-        self.scale = head_dim ** -0.5
+        self.scale = head_dim ** -0.5 or qk_scale
 
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
@@ -130,9 +130,9 @@ class Attention(nn.Module):
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x, seqlen=1):
-        B, N, C = x.shape # [3B, 119, 128]
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4) #
+    def forward(self, x, attn_mask=None, seqlen=1):
+        B, N, C = x.shape # [3B, 119, C]
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)
         x = self.forward_attention(q, k, v)
         x = self.proj(x)
@@ -140,8 +140,9 @@ class Attention(nn.Module):
         return x
 
     def forward_attention(self, q, k, v):
-        B, _, N, C = q.shape # q,k,v [3B, 8, 119, 16] (num_heads=8, head_dim=16)
-        attn = (q @ k.transpose(-2, -1)) * self.scale
+        B, _, N, C = q.shape                            # q,k,v [3B, 8, 119, 16] (num_heads=8, head_dim=16)
+        attn = (q @ k.transpose(-2, -1)) * self.scale  #[B, heads, N, N]
+        
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn) #attn.shape: [3B, 8, 119, 119]
 
