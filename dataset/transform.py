@@ -10,33 +10,32 @@ import logging
 
 def compute_svd(points):
     """
-    points: (n_keypoints=3, 3) numpy array. Should be hip, coord and back to approximate the plane of the mouse back.
+    points:     (n_keypoints, 3) numpy array. Should be left right hip, coord and back to approximate the plane of the mouse back.
     :returns:   barycenter:         (3,) numpy array — mean position of valid points
                 transition matrix: (3, 3), both can be in transform_points 
     """
     hip_coord_back = np.full(points.shape, np.nan)
     for i in [1 ,2, 3, 6, 7, 8]:
         hip_coord_back[i,:] = points[i,:]
-    points = hip_coord_back[~np.any(np.isnan(hip_coord_back), axis=1)] # the keypoints (of hips, backs, coords) with complete 3d data
-    
+    # Remove rows with missing values. Results: keypoints (of hips, backs, coords) with complete 3d data
+    points = hip_coord_back[~np.any(np.isnan(hip_coord_back), axis=1)]
     if len(points) == 0:
         return np.nan, np.nan
     
     barycenter = np.nanmean(points, axis=0)
-    _, _, Vt = np.linalg.svd(points - barycenter)
+    _, _, Vt = np.linalg.svd(points - barycenter) # center the data then apply SVD
     
     return barycenter, Vt.T
 
 
 
+
 class ViewInvariant:
     """
-    Applies a rotation in the XY plane to make skeleton sequences view-invariant. No norm transformation is applied.
-
-    Strategy:
+    Applies a rotation in the XY plane (and optionally XZ plane for pitch) to make skeleton sequences view-invariant. No norm transformation is applied.
     - Compute SVD on a reference frame to find the body's principal axes.
-    - For standing/walking: use A[:,0] (spine axis) — has large XY component.
-    - For climbing:         use A[:,2] (perpendicular to back) — spine is vertical so A[:,0] has near-zero XY component → unstable.
+        - For standing/walking: use A[:,0] (spine axis) — has large XY component.
+        - For climbing:         use A[:,2] (perpendicular to back) — spine is vertical so A[:,0] has near-zero XY component → unstable.
     - Climbing detected when the spine axis (A[:,0]) is dominated by Z.
     - After rotation: body axis aligned with +X (y=0 plane).
     - Facing direction (±X ambiguity) resolved using left/right hip joints.
@@ -44,11 +43,11 @@ class ViewInvariant:
     Forward pass  (T, J, 3) or (B, T, J, 3):  __call__   → centers + rotates by +angle
     Inverse pass  (B, T, J, 3):                untransform → rotates by -angle + re-adds barycenter
     """
-    def __init__(self, index_frame=0, left_idx=None, right_idx=None, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, index_frame=0, left_idx=None, right_idx=None, if_rotate_xz=False, **kwargs):
         self.index_frame = index_frame
         self.left_idx = left_idx   # e.g., left hip
         self.right_idx = right_idx # e.g., right hip 
+        self.if_rotate_xz = if_rotate_xz
 
     def __str__(self):
         return 'ViewInvariant'
@@ -64,16 +63,27 @@ class ViewInvariant:
         out = np.empty_like(array)
         x = array[..., 0]
         y = array[..., 1]
-
         out[..., 0] = x * cos_a - y * sin_a
         out[..., 1] = x * sin_a + y * cos_a
         out[..., 2] = array[..., 2] # Z remains unchanged
         return out
+    
+    @staticmethod
+    def _rotate_xz(array, pitch):
+        cos_a, sin_a = np.cos(pitch), np.sin(pitch)
+        out = np.empty_like(array)
+        x = array[..., 0]
+        z = array[..., 2]
+        out[..., 0] = x * cos_a + z * sin_a
+        out[..., 1] = array[..., 1]
+        out[..., 2] = - x * sin_a + z * cos_a # Z remains unchanged
+        return out
+        
+
 
     def _needs_flip(self, rotated_points, A, angle, index_vect=0):
         """
-        Check if the mouse is facing -X after rotation, needs a 180° flip.
-        Uses left/right hip joints: forward = cross(left→right, spine).
+        Check if the mouse is facing -X after rotation, needs a 180° flip. Uses left/right hip joints: forward = cross(left→right, spine).
         Args:       rotated_points: (J, 3) already rotated + centered reference frame
                     A:              (3, 3) SVD axes of the original frame
                     angle:          float, current rotation angle (before any flip)
@@ -81,7 +91,6 @@ class ViewInvariant:
         """
         left  = rotated_points[self.left_idx]
         right = rotated_points[self.right_idx]
-
         if np.any(np.isnan(left)) or np.any(np.isnan(right)):
             return False  # can't determine → no flip (safe default)
 
@@ -96,6 +105,7 @@ class ViewInvariant:
         forward = np.cross(lr_vec, spine_rot)
         return bool(forward[0] < 0)
 
+
     #  Core transform       
     def compute_transform(self, x):
         """
@@ -104,23 +114,20 @@ class ViewInvariant:
         Returns:    barycenter:  (3,)   centroid used to center all frames
                     index_vect:  int    SVD column used (0 = spine, 2 = dorsal)
                     angle:       float  rotation angle in radians (includes flip if needed)
+                    pitch
         """
         # 0. Define essential joints for computing barycenter
         ESSENTIAL_JOINTS = [1, 2, 3, 6, 7, 8]
-        valid_essential = np.array([np.sum([not np.any(np.isnan(x[t, j]))for j in ESSENTIAL_JOINTS])
-                                    for t in range(x.shape[0])]) 
-
+        valid_essential = np.array([np.sum([not np.any(np.isnan(x[t, j]))for j in ESSENTIAL_JOINTS]) for t in range(x.shape[0])]) 
         if np.max(valid_essential) == 0:
-            raise ValueError("[ViewInvariant] No frame found where at least one of joints "
-                            f"{[j+1 for j in ESSENTIAL_JOINTS]} is valid.")
-
+            raise ValueError("[ViewInvariant] No frame found where at least one of joints is valid.")
+        
+        # 1. Pick reference frame
         idx    = int(np.argmax(valid_essential))     # frame with most valid essentials
-        points = x[idx]                              # (J, 3) 
-
-        mask_na = np.any(np.isnan(points), axis=1) # checks per joint whether any of its 3 coordinates is NaN.
-        # Final guard: need at least 2 valid joints for SVD to be meaningful
+        points = x[idx]                              # (J, 3)
+        mask_na = np.any(np.isnan(points), axis=1)   # checks in reference frame, per joint, whether any of its 3 coordinates is NaN.
         n_valid = np.sum(~mask_na)
-        if n_valid < 2:
+        if n_valid < 2:     # Final guard: need at least 2 valid joints for SVD to be meaningful
             raise ValueError(f"[ViewInvariant] Reference frame {idx} has only {n_valid} valid "
                              f"joint(s) — need at least 2 for SVD.")
 
@@ -134,26 +141,30 @@ class ViewInvariant:
         # 4. Rotation angle to align chosen axis with +X
         vect = A[:, index_vect]
         angle = -np.arctan2(vect[1], vect[0])
+        
+        # 5. Calculate Pitch = angle between spine axis and XY plane. 
+        spine_axis = A[:, 0] # Record spine axis 
+        pitch = np.arcsin(np.clip(spine_axis[2], -1.0, 1.0)) # arcsin(Z component) gives how far the spine tilts out of XY
 
-        # 5. Check and fix facing direction using left/right hips
+        # 6. Check and fix facing direction using left/right hips
         rotated   = self._rotate_xy(points - barycenter, angle)
-        if self._needs_flip(rotated, A, angle):
+        if self._needs_flip(rotated, A, angle, index_vect):
             angle += np.pi  # absorb 180° flip into the angle
 
-        return barycenter, index_vect, angle
+        return barycenter, index_vect, angle, pitch
 
 
-    @staticmethod
-    def apply_transform(x, barycenter, angle):
+    def apply_transform(self, x, barycenter, angle, pitch):
         """
         Forward transform: center + rotate by +angle in XY.
-        Args:   x:          (T, J, 3) or None
-                barycenter: (3,)
-                angle:      float
+        Args:   x:(T, J, 3) or None; barycenter: (3,); angle:float
         """
         if x is None:
             return None
-        return ViewInvariant._rotate_xy(x - barycenter, angle)
+        out = ViewInvariant._rotate_xy(x - barycenter, angle)
+        if self.if_rotate_xz:
+            return ViewInvariant._rotate_xz(out, -pitch)
+        return out
 
    
     def untransform(self, x, **kwargs):
@@ -167,7 +178,6 @@ class ViewInvariant:
         """
         angle      = kwargs['VI_angle']
         barycenter = kwargs['VI_barycenter']
-       
         angle      = float(np.squeeze(angle))
         barycenter = np.array(barycenter).reshape(3)  # ensure (3,)
 
@@ -190,10 +200,10 @@ class ViewInvariant:
                      x_supp_prime: tuple of transformed supplementary sequences
                     kwargs:       updated with VI_barycenter, VI_angle,  min_sample, max_sample
         """
-        barycenter, index_vect, angle = self.compute_transform(x)
-        x_prime = self.apply_transform(x, barycenter, angle)
-        x_supp_prime = tuple(self.apply_transform(xx, barycenter, angle) for xx in x_supp)
+        barycenter, index_vect, angle, pitch = self.compute_transform(x)
+        x_prime = self.apply_transform(x, barycenter, angle, pitch)
 
+        x_supp_prime = tuple(self.apply_transform(xx, barycenter, angle) for xx in x_supp)
         if np.all(np.isnan(x_prime)):
             print('[ViewInvariant] Warning: all NaN in x_prime')
 
@@ -203,6 +213,8 @@ class ViewInvariant:
         kwargs['max_sample']    = np.nanmax(x_prime, axis=(0, 1))  # (3,)
 
         return x_prime, x_supp_prime, kwargs
+
+
 
 
 
@@ -228,9 +240,7 @@ class Normalize:
         safe_range = np.where(range_ == 0, 1.0, range_) ## Avoid division by zero: where range is 0, output 0 (midpoint of [-1,1])
         x_norm = 2 * (x - min_) / safe_range - 1
 
-        ##############################################
-        # Force constant axes to 0 (not ±inf or nan) #
-        ##############################################
+        ##### Force constant axes to 0 (not ±inf or nan) #####
         # x_norm[..., range_ == 0] = 0.0
         
         return x_norm
@@ -277,18 +287,10 @@ class Normalize:
         """
         Inverse normalization: map [-1, 1] back to original coordinate range.
         Args:   x:      (T, J, 3) or (B, T, J, 3)
-                kwargs: must contain 'min_sample' (3,) and 'max_sample' (3,)
-                    as numpy arrays or torch tensors
+                kwargs: must contain 'min_sample' (3,) and 'max_sample' (3,) as numpy arrays or torch tensors
         """
         min_sample = kwargs['min_sample']
         max_sample = kwargs['max_sample']
-        """
-        # Handle torch tensors
-        if hasattr(min_sample, 'detach'):
-            min_sample = min_sample.detach().cpu().numpy()
-        if hasattr(max_sample, 'detach'):
-            max_sample = max_sample.detach().cpu().numpy()
-        """
         min_sample = np.array(min_sample).reshape(3)  # ensure (3,)
         max_sample = np.array(max_sample).reshape(3)
 
@@ -299,7 +301,6 @@ class Normalize:
         # min_sample shape (3,) broadcasts over (..., 3) regardless of ndim
         return self._unnormalize(np.array(x), min_sample, max_sample)
     
-
 
 
 
