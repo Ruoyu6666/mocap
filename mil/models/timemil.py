@@ -109,11 +109,9 @@ class WaveletEncoding(nn.Module):
 
 
 class TimeMIL(nn.Module):
-    def __init__(self, 
-                 in_features=512, mDim=64, n_classes=2, 
-                 dropout=0.,max_seq_len=400,
-                 if_extract_feature=False, if_interval=False, instance_len=30 # length of each path
-                 ):
+    def __init__(self, in_features=512, mDim=64, n_classes=2, dropout=0.,max_seq_len=400,
+                 if_extract_feature=False, if_interval=False, instance_len=30 # length of each patch
+                ):
         super().__init__()
 
         self.if_interval = if_interval                  # if downsize the time series by pooling in each patch
@@ -127,8 +125,7 @@ class TimeMIL(nn.Module):
                 self.feature_extractor = InceptionTimeFeatureExtractor(n_in_channels=in_features, out_channels=mDim//4)# backbone can be replace here
 
         # Define WPE    
-        self.cls_token = nn.Parameter(torch.randn(1, 1, mDim))
-        self.wave1 = torch.randn(2, mDim,1 )
+        self.wave1 = torch.randn(2, mDim, 1 )
         self.wave1[0]=torch.ones( mDim,1 )+ torch.randn( mDim,1 )  #make sure scale >0
         self.wave1 = nn.Parameter(self.wave1)
         
@@ -142,15 +139,15 @@ class TimeMIL(nn.Module):
             
         self.wave1_ = torch.randn(2, mDim,1 )
         self.wave1_[0]=torch.ones( mDim,1 )+ torch.randn( mDim,1 ) #make sure scale >0
-        self.wave1_ = nn.Parameter(self.wave1)
+        self.wave1_ = nn.Parameter(self.wave1_)
         
         self.wave2_ = torch.zeros(2, mDim,1 )
         self.wave2_[0]=torch.ones( mDim,1 )+ torch.randn( mDim,1 ) #make sure scale >0
-        self.wave2_ = nn.Parameter(self.wave2)
+        self.wave2_ = nn.Parameter(self.wave2_)
         
         self.wave3_ = torch.zeros(2, mDim,1 )
         self.wave3_[0]=torch.ones( mDim,1 )+ torch.randn( mDim,1 ) #make sure scale >0
-        self.wave3_ = nn.Parameter(self.wave3)
+        self.wave3_ = nn.Parameter(self.wave3_)
 
         hidden_len = 2* max_seq_len
             
@@ -161,50 +158,37 @@ class TimeMIL(nn.Module):
         # self.pos_layer = ConvPosEncoding1D(mDim)
         self.layer1 = TransLayer(dim=mDim,dropout=dropout)
         self.layer2 = TransLayer(dim=mDim,dropout=dropout)
-        self.norm = nn.LayerNorm(mDim)
-        # self._fc2 = nn.Linear(mDim, n_classes)
-        self._fc2 = nn.Sequential(
-            nn.Linear(mDim,mDim), nn.ReLU(), nn.Dropout(dropout), nn.Linear(mDim, n_classes)
-        )
+        self._fc2 = nn.Sequential(nn.Linear(mDim, mDim), nn.ReLU(), nn.Dropout(dropout), nn.Linear(mDim, n_classes))
         self.alpha = nn.Parameter(torch.ones(1))
         
         initialize_weights(self)
         
         
-    def forward(self, x, warmup=False): #x:[15, 640, 2]
-        
+    def forward(self, x, warmup=False):
         if self.if_interval:
             x = self.start_conv(x)
-
         if self.if_extract_feature:
-            x = self.feature_extractor(x.transpose(1, 2)) # [15, 128, 640] 
-            x = x.transpose(1, 2)
-        # 3736, 1800, 128
+            x = self.feature_extractor(x.transpose(1, 2))
+            x = x.transpose(1, 2) # 3736, 1800, 128
 
         B, seq_len, D = x.shape
-        view_x = x.clone()
         global_token = x.mean(dim=1)#[0]
-      
-        B = x.shape[0]
+
         cls_tokens = self.cls_token.expand(B, -1, -1)    #B * 1 * d
         x = torch.cat((cls_tokens, x), dim=1)
-        # WPE1
-        x = self.pos_layer(x,self.wave1,self.wave2,self.wave3)
-        # TransLayer x1
-        x = self.layer1(x)
-        # WPE2
-        x = self.pos_layer2(x,self.wave1_,self.wave2_,self.wave3_)
-        # TransLayer x2
-        x = self.layer2(x)
-        # only cls_token is used for cls
-        x = x[:,0]
+        x = self.pos_layer(x,self.wave1, self.wave2, self.wave3)   # WPE1
+        x = self.layer1(x) # TransLayer x1
+        x = self.pos_layer2(x,self.wave1_,self.wave2_,self.wave3_) # WPE2
+        x = self.layer2(x) # TransLayer x2
+        x = x[:,0]         # only cls_token is used for cls
         
         # stablity of training random initialized global token
         if warmup:
-            x = 0.1*x+0.99*global_token
+            x = self.alpha * x + (1-self.alpha) * global_token
         logits = self._fc2(x)
             
         return logits
+
 
 if __name__ == "__main__":
     x = torch.randn(3, 400, 4).cuda()

@@ -9,7 +9,6 @@ from .layers import MLP, SkeleEmbed, Block, Attention, trunc_normal_, DropPath
 
 
 
-
 class ActionHeadLinprobe(nn.Module):
     def __init__(self, dim_feat=512, num_classes=60, num_joints=25):
         super(ActionHeadLinprobe, self).__init__()
@@ -20,7 +19,6 @@ class ActionHeadLinprobe(nn.Module):
         feat = feat.mean(dim=[1,2,3]) # [N, C]
         feat = self.fc(feat)
         return feat
-
 
 
 class ActionHeadFinetune(nn.Module):
@@ -48,14 +46,13 @@ class ActionHeadFinetune(nn.Module):
 
 
 
-
 class STTFEncoder(nn.Module):
     def __init__(self, dim_in=3, num_classes=3, dim_feat=256, depth=5, 
                  num_heads=8, mlp_ratio=4, num_frames=120, num_joints=25, patch_size=1, t_patch_size=3,
                  qkv_bias=True, qk_scale=None, drop_rate=0., 
                  attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm, 
-                 protocol='linprobe'): # ["pretrain", "compute_representations","linprobe", "finetune"]
-        
+                 protocol='linprobe', dataset="mocap"): 
+                # protocol: ["compute_representations","linprobe", "finetune"]
         super().__init__()
 
         self.num_classes = num_classes
@@ -66,7 +63,7 @@ class STTFEncoder(nn.Module):
         self.patch_size = patch_size
         self.t_patch_size = t_patch_size
         
-        ##### MAE encoder specifics #####
+
         self.joints_embed = SkeleEmbed(dim_in, dim_feat, num_frames, num_joints, patch_size, t_patch_size)
         self.pos_drop = nn.Dropout(p=drop_rate)
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
@@ -111,30 +108,45 @@ class STTFEncoder(nn.Module):
             nn.init.constant_(m.weight, 1.0)
 
     def forward(self, x):
-        #N, C, T, V, M = x.shape # [32, 300, 3, 12, 2]
-        #x = x.permute(0, 4, 2, 3, 1).contiguous().view(N * M, T, V, C)
-        
-        N, T, M, V, C = x.shape # Modified for mabe dataset, M is number of mice. (batch_size, T, 3, V=12, C=2)
+        N, T, M, V, C = x.shape
         x = x.permute(0, 2, 1, 3, 4).contiguous().view(-1, T, V, C)
+        NM = x.shape[0]
+        TP = self.joints_embed.t_grid_size
+        VP = self.joints_embed.grid_size
         
-        
-        x = self.joints_embed(x)    # embed skeletons
-        NM, TP, VP, _ = x.shape
+        data_mask  = (x != 0.0).all(dim=-1)
+        patch_mask = data_mask.unfold(1, self.t_patch_size, self.t_patch_size)  # [B, 100, 10, t_patch_size]
+        patch_mask = patch_mask.all(dim=-1) # [B, 100, 10]
+        self.valid_patch_mask = patch_mask.reshape(NM,  TP * VP)
+
+        x = self.joints_embed(x)                                             # embed skeletons
         x = x + self.pos_embed[:, :, :VP, :] + self.temp_embed[:, :TP, :, :] # add pos & temp embed
         x = x.reshape(NM, TP * VP, -1)
 
         for idx, blk in enumerate(self.blocks):
-            x = blk(x)              # apply Transformer blocks
-        
+            x = blk(x, self.valid_patch_mask)              # apply Transformer blocks
         x = self.norm(x)
+        """
+        # Old version
         x = x.reshape(N, M, TP, VP, -1) # (B, 3, 100, 12, C)
         if self.protocol == "compute_representations":
             x = x.permute(0, 1, 2, 4, 3)  # (N, M, T, C, J)
-            x = x.mean(dim=-1)            # (N, M, T, C) # calculate representation of each frame by averaging across joints
+            x = x.mean(dim=-1)            # (N, M, T, C) # Average across joints
             x = x.mean(dim=1)             # (N, T, C)
-        
         else:
             x = self.head(x)
+        """
 
+        if self.protocol == "compute_representations":
+            x = x.reshape(NM, TP, VP, -1)                             # [NM, TP, VP, C]
+
+            # joint-level masked mean (over VP)
+            joint_mask = patch_mask.unsqueeze(-1).float()              # [NM, TP, VP, 1]
+            x = (x * joint_mask).sum(dim=2) / joint_mask.sum(dim=2).clamp(min=1)# x: [NM, TP, C]
+
+            x = x.reshape(N, M, TP,-1).mean(dim=1)                       # [N, C]
+        else:
+            x = x.reshape(N, M, TP, VP, -1)
+            x = self.head(x)
 
         return x
