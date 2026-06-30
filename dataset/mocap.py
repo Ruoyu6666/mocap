@@ -7,6 +7,7 @@ from typing import List
 import numpy as np
 import torch
 from torchvision import transforms
+
 from .transform import ViewInvariant
 from .augmentations import GaussianNoise, Reflect, Rotation
 from .datasets import BasePoseTrajDataset
@@ -22,11 +23,8 @@ class MocapDataset(BasePoseTrajDataset):
     KPTS_DIMENSIONS = 3
     KEYFRAME_SHAPE = (NUM_INDIVIDUALS, NUM_KEYPOINTS, KPTS_DIMENSIONS)
     SAMPLE_LEN = 3600
-
-    STR_BODY_PARTS = [
-        'left_ankle',  'left_back',  'left_coord',  'left_hip',  'left_knee', 
-        'right_ankle', 'right_back', 'right_coord', 'right_hip', 'right_knee'
-        ]
+    STR_BODY_PARTS = ['left_ankle',  'left_back',  'left_coord',  'left_hip',  'left_knee', 
+                      'right_ankle', 'right_back', 'right_coord', 'right_hip', 'right_knee']
     BODY_PART_2_INDEX = {w: i for i, w in enumerate(STR_BODY_PARTS)}
 
 
@@ -35,7 +33,6 @@ class MocapDataset(BasePoseTrajDataset):
         mode: str, 
         path_to_data_dir: Path,
         datasets: List[str] | None = None, 
-        #task: str = "CLB" , # FL2 or Tr
         sampling_rate: int = 1,
         num_frames: int = 300,
         sliding_window: int = 149,
@@ -44,11 +41,12 @@ class MocapDataset(BasePoseTrajDataset):
         view_invariant: bool = True, 
         left_idx:     int = 3,       # default left hip
         right_idx:    int = 8,       # default right hip
+        if_rotate_xz: bool = False,
         index_frame:  int = 149, 
         normalizer:    str = 'normal',
         model: str = "SkeletonMAE",
-        split: dict = None, # whether to split dataset by mouse for train/val
-        if_val: bool = False,   # When split is not None: if False, load mouse for training, if true, load mouse for validation mice
+        split: dict = None,     # whether to split dataset by mouse for train/val. No split if None
+        if_val: bool = False,   # When split not None: if False, load mouse for training, if true, load mouse for validation
         **kwargs
     ):
         super().__init__(
@@ -61,11 +59,10 @@ class MocapDataset(BasePoseTrajDataset):
         )
         self.mode = mode
         self.datasets = datasets or self.DEFAULT_DATASETS
-        #self.task = task
         self.augmentations = augmentations
         
         self.view_invariant = view_invariant
-        self.vi  = ViewInvariant(index_frame = index_frame, left_idx = left_idx, right_idx = right_idx,)
+        self.vi  = ViewInvariant(index_frame = index_frame, left_idx = left_idx, right_idx = right_idx, if_rotate_xz=if_rotate_xz)
         self.left_idx = left_idx
         self.right_idx = right_idx
         self.normalizer = normalizer
@@ -75,11 +72,10 @@ class MocapDataset(BasePoseTrajDataset):
         self.model = model
         self.split = split
         self.if_val = if_val
-        
+        # Step 0: load raw data
         self.load_data()
         self.preprocess()
 
-    # Step 0: load raw data
     def load_data(self):
         with open(self.path, 'rb') as file:
                 self.raw_data = pickle.load(file)
@@ -90,13 +86,13 @@ class MocapDataset(BasePoseTrajDataset):
         sub_seq_length = self.max_keypoints_len
 
         num_sequences_total = 0
-        for dataset_name in self.datasets: # iterate through datasets ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"]
+        for dataset_name in self.datasets:  # iterate through datasets ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"]
             if self.split is not None:
                 if self.if_val:
                     mice = self.split[dataset_name]["valid"]
                 else:
                     mice = self.split[dataset_name]["train"]
-            else: # use all data if self.split is None
+            else: # if self.split is None, use data of all mice
                 mice = self.raw_data[dataset_name].keys()
             
             for mouse_name in mice:
@@ -108,18 +104,12 @@ class MocapDataset(BasePoseTrajDataset):
                         vec_seq = sequences[i-num_sequences_total]
                         # Pads the beginning and end of the sequence with duplicate frames
                         pad_vec = np.pad(vec_seq, ((sub_seq_length// 2, sub_seq_length - sub_seq_length // 2), (0, 0), (0, 0)), mode="edge", )
-                        """
-                        # normalize and make view-invariant on the whole sequence before extracting subsequences
+                        # View Transformation on whole sequnece
                         if self.view_invariant:
                             pad_vec, _, _  = self.vi(pad_vec, x_supp=(),)
-                        if self.normalizer == 'normal':
-                            pad_vec, _, _ = self.mocap_normalize(pad_vec)
-                        elif self.normalizer == 'cube':
-                            pad_vec, _, _ = self.normalize_cube(pad_vec)
-                        """
+                        
                         seq_keypoints.append(pad_vec)
-                        # For extracting subsequenes
-                        keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])
+                        keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)]) # # For extracting subsequenes
                 """
                 else: #self.mode in ["compute_representations","linprobe", "finetune"]:
                     for i in range(num_sequences_total, num_sequences_total + num_sequences):
@@ -139,24 +129,22 @@ class MocapDataset(BasePoseTrajDataset):
 
         
     def featurise_keypoints(self, keypoints):
-        # Step 2: Apply ViewInvariant → Normalize to a single subsequence.
         #if self.model == "SkeletonMAE":
         seq = keypoints.reshape(-1, 10, 3)
         if self.interp_holes:
             seq = self.fill_holes(seq)
-        
-        if self.view_invariant:
-            seq, _, _  = self.vi(seq, x_supp=(),)
+        # View Transformation on each sample
+        #if self.view_invariant:
+        #    seq, _, _  = self.vi(seq, x_supp=(),)
         if self.normalizer == 'normal':
             seq, _, _ = self.mocap_normalize(seq)
         elif self.normalizer == 'cube':
             seq, _, _ = self.normalize_cube(seq)
         
         seq = torch.tensor(seq, dtype=torch.float32)
-        
         if self.model == "SkeletonMAE":
-            seq  = torch.unsqueeze(seq, dim = 1)
-            seq = torch.nan_to_num(seq) # replace NaN with 0.0
+            seq = torch.unsqueeze(seq, dim = 1)
+            seq = torch.nan_to_num(seq)  # replace NaN with 0.0
         return seq
     
     
@@ -244,18 +232,12 @@ class MocapDataset(BasePoseTrajDataset):
                 if np.sum(valid) == 0:  # completely missing keypoint or no missing → skip (leave as NaN, to be handled by model or loss)
                     continue
                 first_valid = np.where(valid)[0][0]
-                if first_valid > 0:  # leading holes → fill with first valid value
+                if first_valid > 0:                                  # fill with first valid value
                     filled[:first_valid, j, c] = values[first_valid]
-                for i in range(1, self.max_keypoints_len):
-                    if not valid[i]:  # hole → fill with last valid value
+                for i in range(first_valid, self.max_keypoints_len): # fill with last valid value
+                    if not valid[i]:
                         filled[i, j, c] = filled[i-1, j, c]
-                """
-                filled[:, j, c] = np.interp(
-                    np.arange(self.max_keypoints_len),
-                    np.where(valid)[0],
-                    values[valid]
-                )
-                """
+        
         return filled
     
 
@@ -267,6 +249,7 @@ class MocapDataset(BasePoseTrajDataset):
             sequence = self.augmentations(sequence)
             sequence = sequence.reshape(self.max_keypoints_len, -1)
         feats = self.featurise_keypoints(sequence) # [300, 1, 10, 3]
+        
         if self.model == "behaveMAE":
             feats = feats.reshape(self.max_keypoints_len, self.NUM_INDIVIDUALS, -1) # [300, num_ind, num_joints* 2d] flatten for behaveMAE
 
@@ -277,5 +260,5 @@ class MocapDataset(BasePoseTrajDataset):
         subseq_ix = self.keypoints_ids[idx]
         subsequence = self.seq_keypoints[subseq_ix[0], subseq_ix[1] : subseq_ix[1] + self.max_keypoints_len]
         inputs = self.prepare_subsequence_sample(subsequence)
-        
+        #inputs = inputs[:, :, [0,1,3,4,5,6,8,9],:] # take only 8 keypoints
         return inputs, []

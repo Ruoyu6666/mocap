@@ -16,8 +16,10 @@ from .datasets import BasePoseTrajDataset
 #trunk (SpineM, SpineL, TailBase, ShoulderL, ShoulderR, HipL, HipR), 
 #forelimbs (ElbowL, WristL, HandL,ElbowR, WristR, HandR) 
 #forelimbs (KneeL, AnkleL, FootL, KneeR, AnkleR, FootR)
+# 72, 4500, 23, 3
+# the size of each animal was estimated by sampling the distance between two virtual markers (the snout and the tail base)
 
-class MocapDataset(BasePoseTrajDataset):
+class SdannceDataset(BasePoseTrajDataset):
     """Primary Mouse (+Features) dataset."""
     
     #DEFAULT_DATASETS = ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"]
@@ -25,16 +27,14 @@ class MocapDataset(BasePoseTrajDataset):
     NUM_KEYPOINTS = 23
     KPTS_DIMENSIONS = 3
     KEYFRAME_SHAPE = (NUM_INDIVIDUALS, NUM_KEYPOINTS, KPTS_DIMENSIONS)
-    SAMPLE_LEN = 90000
-    STR_BODY_PARTS = ["Snout", "EarL", "EarR", "SpineF",
-                      "SpineM", "SpineL", "TailBase", "ShoulderL",
-                      "ElbowL", "WristL", "HandL",
-                      "ShoulderR",
-                      "ElbowR", "WristR", "HandR",
-                      "HipL", 
-                      "KneeL", "AnkleL", "FootL", 
-                      "HipR",
-                      "KneeR", "AnkleR", "FootR",]
+    SAMPLE_LEN = 4500
+    STR_BODY_PARTS = ["Snout", "EarL", "EarR", 
+                      "SpineF", "SpineM", "SpineL", "TailBase", 
+                      "ShoulderL", "ElbowL", "WristL", "HandL",
+                      "ShoulderR", "ElbowR", "WristR", "HandR",
+                      "HipL", "KneeL", "AnkleL", "FootL", 
+                      "HipR", "KneeR", "AnkleR", "FootR",] 
+    #https://github.com/tqxli/sdannce/blob/master/dannce/engine/skeletons/utils.py
     BODY_PART_2_INDEX = {w: i for i, w in enumerate(STR_BODY_PARTS)}
     
     def __init__(
@@ -43,7 +43,7 @@ class MocapDataset(BasePoseTrajDataset):
         path_to_data_dir: Path,
         sampling_rate: int = 1,
         num_frames: int = 300,
-        sliding_window: int = 149,
+        sliding_window: int = 100,
         interp_holes: bool = False,
         augmentations: transforms.Compose = None,
         view_invariant: bool = True, 
@@ -57,19 +57,17 @@ class MocapDataset(BasePoseTrajDataset):
         **kwargs
     ):
         
-        super().__init__(
-            path_to_data_dir,
-            sampling_rate,
-            num_frames,
-            sliding_window,
-            interp_holes,
-            **kwargs
-        )
+        super().__init__(path_to_data_dir,
+                         sampling_rate,
+                         num_frames,
+                         sliding_window,
+                         interp_holes,
+                         **kwargs)
         self.mode = mode
         self.augmentations = augmentations
         
         self.view_invariant = view_invariant
-        self.vi  = ViewInvariant(index_frame = index_frame, left_idx = left_idx, right_idx = right_idx, if_rotate_xz=if_rotate_xz)
+        self.vi  = ViewInvariant(index_frame = index_frame, left_idx = left_idx, right_idx = right_idx)
         self.left_idx = left_idx
         self.right_idx = right_idx
         self.normalizer = normalizer
@@ -98,11 +96,11 @@ class MocapDataset(BasePoseTrajDataset):
                 mice = self.split["valid"]
             else:
                 mice = self.split["train"]
-        else: # if self.split is None, use data of all mice
-            mice = self.raw_data.keys()
+        else: 
+            mice = self.raw_data.keys() # if self.split is None, use data of all mice
         
         for mouse_name in mice:
-            sequences = self.raw_data[mouse_name]["data"] #(num_sequences, 3600, 10, 3)
+            sequences = self.raw_data[mouse_name]["m1"] #(num_sequences, 3600, 10, 3)
             num_sequences = len(sequences)
             #if self.mode == "pretrain":
             if True:
@@ -113,9 +111,9 @@ class MocapDataset(BasePoseTrajDataset):
                     # View Transformation on whole sequnece
                     if self.view_invariant:
                         pad_vec, _, _  = self.vi(pad_vec, x_supp=(),)
-                    
+                    # For extracting subsequenes
                     seq_keypoints.append(pad_vec)
-                    keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)]) # # For extracting subsequenes
+                    keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])
             """
             else: #self.mode in ["compute_representations","linprobe", "finetune"]:
                 for i in range(num_sequences_total, num_sequences_total + num_sequences):
@@ -134,8 +132,7 @@ class MocapDataset(BasePoseTrajDataset):
         del self.raw_data
 
     def featurise_keypoints(self, keypoints):
-        #if self.model == "SkeletonMAE":
-        seq = keypoints.reshape(-1, 10, 3)
+        seq = keypoints.reshape(-1, self.NUM_KEYPOINTS, 3)
         if self.interp_holes:
             seq = self.fill_holes(seq)
         # View Transformation on each sample
@@ -149,7 +146,7 @@ class MocapDataset(BasePoseTrajDataset):
         seq = torch.tensor(seq, dtype=torch.float32)
         if self.model == "SkeletonMAE":
             seq = torch.unsqueeze(seq, dim = 1)
-            seq = torch.nan_to_num(seq) # replace NaN with 0.0
+            seq = torch.nan_to_num(seq, nan = 0.0) # replace NaN with 0.0
         return seq
     
     
@@ -194,13 +191,13 @@ class MocapDataset(BasePoseTrajDataset):
         return filled
     
 
-    def prepare_subsequence_sample(self, sequence: np.ndarray):  # sequence (300, 10, 3)
+    def prepare_subsequence_sample(self, sequence: np.ndarray):  # sequence (300, 23, 3)
         """Returns one training sample"""
         if self.augmentations:
             sequence = sequence.reshape(self.max_keypoints_len, *self.KEYFRAME_SHAPE)
             sequence = self.augmentations(sequence)
             sequence = sequence.reshape(self.max_keypoints_len, -1)
-        feats = self.featurise_keypoints(sequence) # [300, 1, 10, 3]
+        feats = self.featurise_keypoints(sequence) # [300, 1, 23, 3]
         
         if self.model == "behaveMAE":
             feats = feats.reshape(self.max_keypoints_len, self.NUM_INDIVIDUALS, -1) # [300, num_ind, num_joints* 2d] flatten for behaveMAE
