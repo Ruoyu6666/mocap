@@ -6,59 +6,40 @@ mouse_names = {
     "INH2": ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10', 'M11', 'M12'], 
     "MOS1aD": ['M4', 'M5', 'M6', 'M8', 'M9', 'M10']}
 """
-
 # k fold validation based on mouse
 fold_1 = {
-    "CP1A": {"train": ["M14", "M15", "M19"], 
-             "valid": ["M1"]},
-    "CP1B": {"train": ["M2", "M3", "M4", "M5", "M6"], 
-             "valid": ["M1"]},
-    "INH1": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10"],
-             "valid": ["M1", "M6"]},
-    "INH2": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10", "M12"],
-             "valid": ["M1", "M6", "M11"]},
-    "MOS1aD": {"train": ["M5", "M6", "M8", "M9", "M10"],
-               "valid": ["M4"]}
+        "CP1A": {"train": ["M14", "M15", "M19"], "valid": ["M1"]},
+        "CP1B": {"train": ["M2", "M3", "M4", "M5", "M6"], "valid": ["M1"]},
+        "INH1": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10"], "valid": ["M1", "M6"]},
+        "INH2": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10", "M12"], "valid": ["M1", "M6", "M11"]},
+        "MOS1aD": {"train": ["M5", "M6", "M8", "M9", "M10"], "valid": ["M4"]}
 }
 fold_2 = {
-    "CP1A": {"train": ["M1", "M15", "M19"], 
-            "valid": ["M14"]},
-    "CP1B": {"train": ["M1", "M3", "M4", "M5", "M6"], 
-            "valid": ["M2"]},
-    "INH1": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10"],
-            "valid": ["M2", "M7"]},
-    "INH2": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10", "M11"],
-            "valid": ["M2", "M7", "M12"]},
-    "MOS1aD": {"train": ["M4", "M6", "M8", "M9", "M10"],
-                "valid": ["M5"]}
+        "CP1A": {"train": ["M1", "M15", "M19"], "valid": ["M14"]},
+        "CP1B": {"train": ["M1", "M3", "M4", "M5", "M6"], "valid": ["M2"]},
+        "INH1": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10"], "valid": ["M2", "M7"]},
+        "INH2": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10", "M11"], "valid": ["M2", "M7", "M12"]},
+        "MOS1aD": {"train": ["M4", "M6", "M8", "M9", "M10"], "valid": ["M5"]}
 }
 fold_3 = {
-    "CP1A": {"train": ["M1", "M14", "M19"], 
-            "valid": ["M15"]},
-    "CP1B": {"train": ["M1", "M2", "M4", "M5", "M6"], 
-            "valid": ["M3"]},
-    "INH1": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M10"],
-            "valid": ["M3", "M8"]},
-    "INH2": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M11", "M12"],
-            "valid": ["M3", "M8", "M10"]},
-    "MOS1aD": {"train": ["M4", "M5", "M8", "M9", "M10"],
-                "valid": ["M6"]}
+        "CP1A": {"train": ["M1", "M14", "M19"], "valid": ["M15"]},
+        "CP1B": {"train": ["M1", "M2", "M4", "M5", "M6"], "valid": ["M3"]},
+        "INH1": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M10"], "valid": ["M3", "M8"]},
+        "INH2": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M11", "M12"], "valid": ["M3", "M8", "M10"]},
+        "MOS1aD": {"train": ["M4", "M5", "M8", "M9", "M10"], "valid": ["M6"]}
 }
 fold_4 = {
-    "CP1A": {"train": ["M1", "M14", "M15"], 
-            "valid": ["M19"]},
-    "CP1B": {"train": ["M1", "M2", "M3", "M5", "M6"], 
-            "valid": ["M4"]},
-    "INH1": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10"],
-            "valid": ["M4", "M9"]},
-    "INH2": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10", "M12"],
-            "valid": ["M4", "M9", "M11"]},
-    "MOS1aD": {"train": ["M4", "M5", "M6", "M9", "M10"],
-            "valid": ["M8"]}
+        "CP1A": {"train": ["M1", "M14", "M15"],  "valid": ["M19"]},
+        "CP1B": {"train": ["M1", "M2", "M3", "M5", "M6"],  "valid": ["M4"]},
+        "INH1": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10"], "valid": ["M4", "M9"]},
+        "INH2": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10", "M12"], "valid": ["M4", "M9", "M11"]},
+        "MOS1aD": {"train": ["M4", "M5", "M6", "M9", "M10"], "valid": ["M8"]}
 }
 
-
-
+fmr1_fold_1 = {"train":[402, 404, 405, 406, 407, 408], "valid": [401, 403]}
+fmr1_fold_2 = {"train":[401, 403, 405, 406, 407, 408], "valid": [402, 404]}
+fmr1_fold_3 = {"train":[401, 402, 403, 404, 407, 408], "valid": [405, 406]}
+fmr1_fold_4 = {"train":[401, 402, 404, 405, 406, 407], "valid": [403, 408]}
 
 
 import os
@@ -88,25 +69,25 @@ from models.skeletonMAE.model.skeletonMAE import SkeletonMAE
 from models.skeletonMAE.model.encoder import STTFEncoder
 from dataset.mabe_mice import MABeMouseDataset
 from dataset.mocap import MocapDataset
+from dataset.sdannce import SdannceDataset
 
 
 
 def get_args_parser():
-
     parser = argparse.ArgumentParser("STTF Training & Compute Representation", add_help=False)
 
     """SkeletonMAE Model Hyperparameters"""
     parser.add_argument('--dim_in', default=3, type=int, help='input dimension')
     parser.add_argument('--dim_feat', default=192, type=int, help='feature dimension')
-    parser.add_argument('--decoder_dim_feat', default=256, type=int, help='decoder feature dimension')
+    #parser.add_argument('--decoder_dim_feat', default=256, type=int, help='decoder feature dimension')
     parser.add_argument('--depth', default=6, type=int, help='number of layers in the encoder')
-    parser.add_argument('--decoder_depth', default=1, type=int, help='number of layers in the decoder')
+    #parser.add_argument('--decoder_depth', default=1, type=int, help='number of layers in the decoder')
     parser.add_argument('--num_heads', default=8,  type=int, help='number of attention heads')
     parser.add_argument('--mlp_ratio', default=4, type=int, help='ratio of mlp hidden dim to embedding dim')
     parser.add_argument('--num_frames', default=300, type=int, help='number of frames in the input skeleton sequence')
     parser.add_argument('--num_joints', default=10, type=int, help='number of joints in the input skeleton sequence')
     parser.add_argument('--patch_size', default=1, type=int, help='spatial patch size (number of joints per patch)')
-    parser.add_argument('--t_patch_size', default=2, type=int, help='temporal patch size (number of frames per patch)')
+    parser.add_argument('--t_patch_size', default=3, type=int, help='temporal patch size (number of frames per patch)')
     parser.add_argument('--qkv_bias', action='store_true', help='if True, add a learnable bias to query, key, value')
     parser.add_argument('--qk_scale', default=None, type=float, help='override default qk scale of head_dim ** -0.5 if set')
     parser.add_argument('--drop_rate', default=0., type=float, help='dropout rate')
@@ -118,18 +99,12 @@ def get_args_parser():
     
     """Dataset and DataLoader parameters"""
     parser.add_argument("--dataset",  type=str, default='mocap')
-    #parser.add_argument("--task",  type=str, default='FL2')
-    parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/mocap/data/mocap/data_FL2.pkl')
+    parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/data/mocap/data_FL2.pkl')
     parser.add_argument("--sliding_window", default=60, type=int)
     parser.add_argument("--sampling_rate", default=1, type=int)
     parser.add_argument("--interp_holes", default=False, type=str2bool)
     parser.add_argument("--split", default=None, type=dict) 
-    #parser.add_argument("--cache_path", type=str, default='../data/tmp/mabe_mouse_train.pkl')
-    #parser.add_argument("--cache", default=False, type=str2bool) # if true cache processed data or load from cache
 
-    # In foward function of STTFormer
-    parser.add_argument('--mask_ratio', default=0.8, type=float, help='Masking ratio (percentage of removed patches).')
-    
     """Dataset augmentation and preprocessing"""
     parser.add_argument("--data_augment", default=False, type=str2bool)
     parser.add_argument("--view_invariant", default=True, type=str2bool)
@@ -142,24 +117,21 @@ def get_args_parser():
     """Training parameters"""
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument('--blr', type=float, default=1e-3, metavar='LR', help='base learning rate: absolute_lr = base_lr * total_batch_size / 256')
-    parser.add_argument('--min_lr', type=float, default=0., metavar='LR', help='lower lr bound for cyclic schedulers that hit 0')
-    parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
+    #parser.add_argument("--lr", type=float, default=1e-4)
+    #parser.add_argument('--blr', type=float, default=1e-3, metavar='LR', help='base learning rate: absolute_lr = base_lr * total_batch_size / 256')
+    #parser.add_argument('--min_lr', type=float, default=0., metavar='LR', help='lower lr bound for cyclic schedulers that hit 0')
+    #parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
 
     """Saving and logging"""
     parser.add_argument("--log_interval", type=int, default=100)
     parser.add_argument("--save_dir", type=str, default="./outputs/") #  models, results, checkpoints
-    
-    # model path for computing representation
-    parser.add_argument("--model_path", type=str, default="/home/rguo_hpc/myfolder/mocap/outputs/checkpoints/mae_checkpoint_epoch_40.pth")
+    parser.add_argument("--model_path", type=str, default="/home/rguo_hpc/myfolder/mocap/outputs/checkpoints/newFL2/mae_checkpoint_epoch_30.pth")
     
     """Type of job"""
     parser.add_argument("--if_val", type=str2bool, default=False) # whether to compute representations for validation set (if False, compute for training set)
     parser.add_argument("--job", type=str, default="compute_representations", choices=["pretrain", "compute_representations","linprobe", "finetune"])
     parser.add_argument("--fast_inference",default=False, type=str2bool)
     return parser.parse_args()
-
 
 
 
@@ -209,7 +181,6 @@ def compute_representations(model,data_loader, device, args):
 
 
 
-
 if __name__ == "__main__":
 
     timestamp = readable_timestamp()
@@ -225,6 +196,19 @@ if __name__ == "__main__":
                                         if_fill=args.fill_holes,
                                         augmentations=None,
                                         include_testdata=True,)
+        elif args.dataset == "sdannce":
+            dataset = SdannceDataset(mode = args.job, 
+                                       path_to_data_dir=args.path_to_data_dir,
+                                       sampling_rate=args.sampling_rate,
+                                       num_frames=args.num_frames,
+                                       sliding_window=args.num_frames if args.fast_inference else args.sliding_window,
+                                       interp_holes=args.interp_holes,
+                                       augmentations=args.data_augment,
+                                       view_invariant = args.view_invariant, 
+                                       index_frame = int(args.num_frames/2),
+                                       model = "SkeletonMAE",
+                                       split = fmr1_fold_1,
+                                       if_val = args.if_val)
         elif args.dataset == "mocap":
             dataset = MocapDataset(mode = args.job,
                                 path_to_data_dir = args.path_to_data_dir,
@@ -237,7 +221,7 @@ if __name__ == "__main__":
                                 augmentations=args.data_augment,
                                 view_invariant = args.view_invariant, 
                                 left_idx = 3,       # default left hip
-                                right_idx = 8,       # default right hip
+                                right_idx = 8,      # default right hip
                                 index_frame = 149, 
                                 model = "SkeletonMAE",
                                 split = fold_1, # whether to split dataset by mouse for train/val
