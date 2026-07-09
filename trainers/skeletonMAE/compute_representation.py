@@ -7,28 +7,28 @@ mouse_names = {
     "MOS1aD": ['M4', 'M5', 'M6', 'M8', 'M9', 'M10']}
 """
 # k fold validation based on mouse
-fold_1 = {
+mocap_fold_1 = {
         "CP1A": {"train": ["M14", "M15", "M19"], "valid": ["M1"]},
         "CP1B": {"train": ["M2", "M3", "M4", "M5", "M6"], "valid": ["M1"]},
         "INH1": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10"], "valid": ["M1", "M6"]},
         "INH2": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10", "M12"], "valid": ["M1", "M6", "M11"]},
         "MOS1aD": {"train": ["M5", "M6", "M8", "M9", "M10"], "valid": ["M4"]}
 }
-fold_2 = {
+mocap_fold_2 = {
         "CP1A": {"train": ["M1", "M15", "M19"], "valid": ["M14"]},
         "CP1B": {"train": ["M1", "M3", "M4", "M5", "M6"], "valid": ["M2"]},
         "INH1": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10"], "valid": ["M2", "M7"]},
         "INH2": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10", "M11"], "valid": ["M2", "M7", "M12"]},
         "MOS1aD": {"train": ["M4", "M6", "M8", "M9", "M10"], "valid": ["M5"]}
 }
-fold_3 = {
+mocap_fold_3 = {
         "CP1A": {"train": ["M1", "M14", "M19"], "valid": ["M15"]},
         "CP1B": {"train": ["M1", "M2", "M4", "M5", "M6"], "valid": ["M3"]},
         "INH1": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M10"], "valid": ["M3", "M8"]},
         "INH2": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M11", "M12"], "valid": ["M3", "M8", "M10"]},
         "MOS1aD": {"train": ["M4", "M5", "M8", "M9", "M10"], "valid": ["M6"]}
 }
-fold_4 = {
+mocap_fold_4 = {
         "CP1A": {"train": ["M1", "M14", "M15"],  "valid": ["M19"]},
         "CP1B": {"train": ["M1", "M2", "M3", "M5", "M6"],  "valid": ["M4"]},
         "INH1": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10"], "valid": ["M4", "M9"]},
@@ -79,9 +79,7 @@ def get_args_parser():
     """SkeletonMAE Model Hyperparameters"""
     parser.add_argument('--dim_in', default=3, type=int, help='input dimension')
     parser.add_argument('--dim_feat', default=192, type=int, help='feature dimension')
-    #parser.add_argument('--decoder_dim_feat', default=256, type=int, help='decoder feature dimension')
     parser.add_argument('--depth', default=6, type=int, help='number of layers in the encoder')
-    #parser.add_argument('--decoder_depth', default=1, type=int, help='number of layers in the decoder')
     parser.add_argument('--num_heads', default=8,  type=int, help='number of attention heads')
     parser.add_argument('--mlp_ratio', default=4, type=int, help='ratio of mlp hidden dim to embedding dim')
     parser.add_argument('--num_frames', default=300, type=int, help='number of frames in the input skeleton sequence')
@@ -125,7 +123,7 @@ def get_args_parser():
     """Saving and logging"""
     parser.add_argument("--log_interval", type=int, default=100)
     parser.add_argument("--save_dir", type=str, default="./outputs/") #  models, results, checkpoints
-    parser.add_argument("--model_path", type=str, default="/home/rguo_hpc/myfolder/mocap/outputs/checkpoints/newFL2/mae_checkpoint_epoch_30.pth")
+    parser.add_argument("--model_path", type=str, default="/home/rguo_hpc/myfolder/mocap/outputs/checkpoints/FL2/whole_vi_checkpoint_30.pth")
     
     """Type of job"""
     parser.add_argument("--if_val", type=str2bool, default=False) # whether to compute representations for validation set (if False, compute for training set)
@@ -135,8 +133,7 @@ def get_args_parser():
 
 
 
-# fast inference to compute representations for all sequences in the dataset and save as .npy file
-def compute_representations(model,data_loader, device, args):
+def compute_representations(model, data_loader, device, args):
     os.makedirs(args.save_dir + '/representations', exist_ok=True)
     model = model.to(device)
     model.eval()
@@ -224,7 +221,7 @@ if __name__ == "__main__":
                                 right_idx = 8,      # default right hip
                                 index_frame = 149, 
                                 model = "SkeletonMAE",
-                                split = fold_1, # whether to split dataset by mouse for train/val
+                                split = mocap_fold_1, # whether to split dataset by mouse for train/val
                                 if_val = args.if_val,)
             
 

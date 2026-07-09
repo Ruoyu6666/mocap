@@ -7,16 +7,14 @@ import warnings
 from .layers import MLP, SkeleEmbed, Block, trunc_normal_, DropPath
 
 
-
 class SkeletonMAE(nn.Module):
     def __init__(self, dim_in=3, dim_feat=256, decoder_dim_feat=256, depth=5, decoder_depth=5, 
                  num_heads=8, mlp_ratio=4, num_frames=120, num_joints=25, patch_size=1, t_patch_size=3,
                  qkv_bias=True, qk_scale=None, drop_rate=0., 
                  attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm, 
-                 norm_skes_loss=False, dataset="mocap"):
+                 norm_skes_loss=False, dataset="mocap"): 
         
         super().__init__()
-
         self.dim_in = dim_in
         self.dim_feat = dim_feat
 
@@ -44,7 +42,7 @@ class SkeletonMAE(nn.Module):
         self.pos_embed = nn.Parameter(torch.zeros(1, 1, num_joints//patch_size, dim_feat))
         trunc_normal_(self.temp_embed, std=.02)
         trunc_normal_(self.pos_embed, std=.02)
-
+#
         # self.proj_head = nn.Sequential(nn.Linear(dim_feat, dim_feat), nn.GELU(), nn.Linear(dim_feat, dim_feat))
         
         ##### MAE decoder specifics #####
@@ -103,7 +101,7 @@ class SkeletonMAE(nn.Module):
     
     """
     # First mask entire frames may be more effective to learn temporal dynamics, then mask joints may be more effective to learn spatial correlations. 
-    def random_masking(self, x, frame_mask_ratio=0.5, joint_mask_ratio=0.6):
+    def random_masking(self, x, frame_mask_ratio=0.6, joint_mask_ratio=0.5):
         N, L, D = x.shape
         TP = self.joints_embed.t_grid_size
         VP = self.joints_embed.grid_size

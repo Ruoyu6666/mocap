@@ -291,7 +291,8 @@ def main(args):
     """
     Set up optimizer and training loop
     """
-    optimizer = optim.Adam(model.parameters(), lr=args.lr, amsgrad=True)
+    #optimizer = optim.Adam(model.parameters(), lr=args.lr, amsgrad=True)
+    optimizer = optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.95), weight_decay=args.weight_decay)
 
     model = model.to(device)
     if args.ckpt_path is not None:  # load checkpoint if exists

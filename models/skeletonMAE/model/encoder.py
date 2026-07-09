@@ -139,11 +139,9 @@ class STTFEncoder(nn.Module):
 
         if self.protocol == "compute_representations":
             x = x.reshape(NM, TP, VP, -1)                             # [NM, TP, VP, C]
-
             # joint-level masked mean (over VP)
             joint_mask = patch_mask.unsqueeze(-1).float()              # [NM, TP, VP, 1]
             x = (x * joint_mask).sum(dim=2) / joint_mask.sum(dim=2).clamp(min=1)# x: [NM, TP, C]
-
             x = x.reshape(N, M, TP,-1).mean(dim=1)                       # [N, C]
         else:
             x = x.reshape(N, M, TP, VP, -1)

@@ -4,6 +4,7 @@ import os
 import pickle
 from pathlib import Path
 from typing import List
+from unittest import result
 import numpy as np
 import torch
 from torchvision import transforms
@@ -16,25 +17,23 @@ from .datasets import BasePoseTrajDataset
 #trunk (SpineM, SpineL, TailBase, ShoulderL, ShoulderR, HipL, HipR), 
 #forelimbs (ElbowL, WristL, HandL,ElbowR, WristR, HandR) 
 #forelimbs (KneeL, AnkleL, FootL, KneeR, AnkleR, FootR)
-# 72, 4500, 23, 3
+# (24, 90000, 23, 3) -> (600, 3600, 23, 3)
 # the size of each animal was estimated by sampling the distance between two virtual markers (the snout and the tail base)
+
 
 class SdannceDataset(BasePoseTrajDataset):
     """Primary Mouse (+Features) dataset."""
-    
-    #DEFAULT_DATASETS = ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"]
     NUM_INDIVIDUALS = 1
     NUM_KEYPOINTS = 23
+    SAMPLE_LEN = 4500
+    STR_BODY_PARTS = ["Snout", "EarL", "EarR",  "SpineF", "SpineM", "SpineL", "TailBase", # "SpineL"
+                      "ShoulderL", "ElbowL", "WristL", "HandL", # "HandL, "HandR"
+                      "ShoulderR", "ElbowR", "WristR", "HandR", # "FootL",  "FootR"
+                      "HipL", "KneeL", "AnkleL", "FootL", "HipR", "KneeR", "AnkleR", "FootR",] 
+                      #  5, 10, 14, 18, 22
+    #https://github.com/tqxli/sdannce/blob/master/dannce/engine/skeletons/utils.py
     KPTS_DIMENSIONS = 3
     KEYFRAME_SHAPE = (NUM_INDIVIDUALS, NUM_KEYPOINTS, KPTS_DIMENSIONS)
-    SAMPLE_LEN = 4500
-    STR_BODY_PARTS = ["Snout", "EarL", "EarR", 
-                      "SpineF", "SpineM", "SpineL", "TailBase", 
-                      "ShoulderL", "ElbowL", "WristL", "HandL",
-                      "ShoulderR", "ElbowR", "WristR", "HandR",
-                      "HipL", "KneeL", "AnkleL", "FootL", 
-                      "HipR", "KneeR", "AnkleR", "FootR",] 
-    #https://github.com/tqxli/sdannce/blob/master/dannce/engine/skeletons/utils.py
     BODY_PART_2_INDEX = {w: i for i, w in enumerate(STR_BODY_PARTS)}
     
     def __init__(
@@ -82,9 +81,36 @@ class SdannceDataset(BasePoseTrajDataset):
         self.preprocess()
 
     def load_data(self):
+        """
         with open(self.path, 'rb') as file:
             self.raw_data = pickle.load(file)
+        """
+        with open(self.path, 'rb') as file:
+            result = pickle.load(file)
+        L = self.SAMPLE_LEN
+        N = int(90000 / self.SAMPLE_LEN) # number of sequences per sequence
+        
+        for mouse in result.keys(): # for each mouse
+            num_seq = len(result[mouse]["ratgen"])
+            ratgen  = int(result[mouse]["ratgen"][0])
+            result[mouse]["ratgen"] = np.full((num_seq * N,), ratgen)
 
+            result[mouse]["position"] = np.tile(np.arange(0, N), num_seq)
+
+            result[mouse]["m1"] = np.array(result[mouse]["m1"])     # (3, 90000, 3, 23)
+            result[mouse]["m1"] = result[mouse]["m1"].reshape(-1, L, 23, 3)
+            
+            result[mouse]["llac"] = np.array(result[mouse]["llac"]) # (3, 90000, 1)
+            result[mouse]["llac"] = np.squeeze(result[mouse]["llac"], axis=2)
+            result[mouse]["llac"] = result[mouse]["llac"].reshape(-1, L,)
+            
+            result[mouse]["hlac"] = np.array(result[mouse]["hlac"]) # (3, 90000, 1)
+            result[mouse]["hlac"] = np.squeeze(result[mouse]["hlac"], axis=2)
+            result[mouse]["hlac"] = result[mouse]["hlac"].reshape(-1, L,)
+        
+        self.raw_data = result
+        del result
+        
     def preprocess(self):
         seq_keypoints = []
         keypoints_ids = []
@@ -110,7 +136,7 @@ class SdannceDataset(BasePoseTrajDataset):
                     pad_vec = np.pad(vec_seq, ((sub_seq_length// 2, sub_seq_length - sub_seq_length // 2), (0, 0), (0, 0)), mode="edge", )
                     # View Transformation on whole sequnece
                     if self.view_invariant:
-                        pad_vec, _, _  = self.vi(pad_vec, x_supp=(),)
+                       pad_vec, _, _  = self.vi(pad_vec, x_supp=(),)
                     # For extracting subsequenes
                     seq_keypoints.append(pad_vec)
                     keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])

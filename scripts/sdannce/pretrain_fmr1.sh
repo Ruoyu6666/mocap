@@ -6,12 +6,12 @@ python trainers/skeletonMAE/pretrain.py \
   --decoder_depth 1 \
   --num_heads 8 \
   --mlp_ratio 4 \
-  --num_frames 300 \
+  --num_frames 240 \
   --num_joints 23 \
   --patch_size 1 \
   --t_patch_size 3 \
   --drop_rate 0.0 \
-  --attn_drop_rate 0.0 \
+  --attn_drop_rate 0.01 \
   --drop_path_rate 0.0 \
   --dataset sdannce \
   --path_to_data_dir /home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl \
@@ -22,7 +22,7 @@ python trainers/skeletonMAE/pretrain.py \
   --view_invariant True \
   --num_workers 8 \
   --batch_size 64 \
-  --epochs 60 \
+  --epochs 50 \
   --lr 1e-4 \
   --blr 1e-3 \
   --min_lr 0.0 \
@@ -41,7 +41,7 @@ python trainers/skeletonMAE/compute_representation.py \
   --depth 6 \
   --num_heads 8 \
   --mlp_ratio 4 \
-  --num_frames 300 \
+  --num_frames 150 \
   --num_joints 23 \
   --patch_size 1 \
   --t_patch_size 3 \
@@ -50,7 +50,7 @@ python trainers/skeletonMAE/compute_representation.py \
   --drop_path_rate 0.0 \
   --dataset sdannce \
   --path_to_data_dir /home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl \
-  --sliding_window 100 \
+  --sliding_window 50 \
   --sampling_rate 1 \
   --view_invariant True \
   --num_workers 8 \
@@ -58,5 +58,16 @@ python trainers/skeletonMAE/compute_representation.py \
   --epochs 60 \
   --log_interval 100 \
   --save_dir ./outputs/ \
-  --model_path /home/rguo_hpc/myfolder/mocap/outputs/checkpoints/mae_checkpoint_epoch_30.pth\
+  --model_path /home/rguo_hpc/myfolder/mocap/outputs/checkpoints/fmr1/61/mae_epoch_30_3600_150.pth\
   --if_val True
+
+
+
+python main.py --dataset sdannce --subseq_len 2000  -if_extract_feature False
+--lr 0.001 --batchsize 32
+--embed 128 
+--weight_decay 0.0001
+--batchsize 32
+
+
+2000: 60.74
