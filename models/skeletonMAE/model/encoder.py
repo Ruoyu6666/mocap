@@ -115,8 +115,9 @@ class STTFEncoder(nn.Module):
         VP = self.joints_embed.grid_size
         
         data_mask  = (x != 0.0).all(dim=-1)
-        patch_mask = data_mask.unfold(1, self.t_patch_size, self.t_patch_size)  # [B, 100, 10, t_patch_size]
-        patch_mask = patch_mask.all(dim=-1) # [B, 100, 10]
+        patch_mask = data_mask.unfold(dimension=1, size=self.t_patch_size, step=self.t_patch_size)  # [B, 100, 10, t_patch_size]
+        patch_mask = patch_mask.unfold(dimension=2, size=self.patch_size, step=self.patch_size)
+        patch_mask = patch_mask.all(dim=-1).all(dim=-1) # [B, 100, 10]
         self.valid_patch_mask = patch_mask.reshape(NM,  TP * VP)
 
         x = self.joints_embed(x)                                             # embed skeletons
@@ -142,7 +143,7 @@ class STTFEncoder(nn.Module):
             # joint-level masked mean (over VP)
             joint_mask = patch_mask.unsqueeze(-1).float()              # [NM, TP, VP, 1]
             x = (x * joint_mask).sum(dim=2) / joint_mask.sum(dim=2).clamp(min=1)# x: [NM, TP, C]
-            x = x.reshape(N, M, TP,-1).mean(dim=1)                       # [N, C]
+            x = x.reshape(N, M, TP, -1).mean(dim=1)                       # [N, C]
         else:
             x = x.reshape(N, M, TP, VP, -1)
             x = self.head(x)

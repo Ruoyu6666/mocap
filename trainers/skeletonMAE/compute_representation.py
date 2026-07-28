@@ -36,6 +36,7 @@ mocap_fold_4 = {
         "MOS1aD": {"train": ["M4", "M5", "M6", "M9", "M10"], "valid": ["M8"]}
 }
 
+
 fmr1_fold_1 = {"train":[402, 404, 405, 406, 407, 408], "valid": [401, 403]}
 fmr1_fold_2 = {"train":[401, 403, 405, 406, 407, 408], "valid": [402, 404]}
 fmr1_fold_3 = {"train":[401, 402, 403, 404, 407, 408], "valid": [405, 406]}
@@ -167,7 +168,7 @@ def compute_representations(model, data_loader, device, args):
                 for j in range(len(keypoints_id)):
                         seq_id, start_idx = keypoints_id[j]
                         start_idx = int(start_idx/args.t_patch_size) # convert from frame index to index in the representation (since representation is 1 per 3 frames)
-                        repr_sum[seq_id, start_idx:start_idx+latent_len] += torch.from_numpy(latent[j])
+                        repr_sum[seq_id, start_idx:start_idx+latent_len]  += torch.from_numpy(latent[j])
                         count_sum[seq_id, start_idx:start_idx+latent_len] += 1
                 all_representations = repr_sum / count_sum # (N, T, C)
     
@@ -221,7 +222,7 @@ if __name__ == "__main__":
                                 right_idx = 8,      # default right hip
                                 index_frame = 149, 
                                 model = "SkeletonMAE",
-                                split = mocap_fold_1, # whether to split dataset by mouse for train/val
+                                split = None, # whether to split dataset by mouse for train/val
                                 if_val = args.if_val,)
             
 
