@@ -63,7 +63,6 @@ class STTFEncoder(nn.Module):
         self.patch_size = patch_size
         self.t_patch_size = t_patch_size
         
-
         self.joints_embed = SkeleEmbed(dim_in, dim_feat, num_frames, num_joints, patch_size, t_patch_size)
         self.pos_drop = nn.Dropout(p=drop_rate)
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
@@ -87,7 +86,6 @@ class STTFEncoder(nn.Module):
             raise TypeError('Unrecognized evaluation protocol!')
         """
         self.protocol = protocol
-
         self.temp_embed = nn.Parameter(torch.zeros(1, num_frames//t_patch_size, 1, dim_feat))
         self.pos_embed = nn.Parameter(torch.zeros(1, 1, num_joints//patch_size, dim_feat))
         trunc_normal_(self.temp_embed, std=.02)
@@ -117,7 +115,7 @@ class STTFEncoder(nn.Module):
         data_mask  = (x != 0.0).all(dim=-1)
         patch_mask = data_mask.unfold(dimension=1, size=self.t_patch_size, step=self.t_patch_size)  # [B, 100, 10, t_patch_size]
         patch_mask = patch_mask.unfold(dimension=2, size=self.patch_size, step=self.patch_size)
-        patch_mask = patch_mask.all(dim=-1).all(dim=-1) # [B, 100, 10]
+        patch_mask = patch_mask.all(dim=-1).all(dim=-1) # [B, TP, VP]
         self.valid_patch_mask = patch_mask.reshape(NM,  TP * VP)
 
         x = self.joints_embed(x)                                             # embed skeletons
@@ -127,23 +125,13 @@ class STTFEncoder(nn.Module):
         for idx, blk in enumerate(self.blocks):
             x = blk(x, self.valid_patch_mask)              # apply Transformer blocks
         x = self.norm(x)
-        """
-        # Old version
-        x = x.reshape(N, M, TP, VP, -1) # (B, 3, 100, 12, C)
-        if self.protocol == "compute_representations":
-            x = x.permute(0, 1, 2, 4, 3)  # (N, M, T, C, J)
-            x = x.mean(dim=-1)            # (N, M, T, C) # Average across joints
-            x = x.mean(dim=1)             # (N, T, C)
-        else:
-            x = self.head(x)
-        """
 
         if self.protocol == "compute_representations":
             x = x.reshape(NM, TP, VP, -1)                             # [NM, TP, VP, C]
             # joint-level masked mean (over VP)
             joint_mask = patch_mask.unsqueeze(-1).float()              # [NM, TP, VP, 1]
             x = (x * joint_mask).sum(dim=2) / joint_mask.sum(dim=2).clamp(min=1)# x: [NM, TP, C]
-            x = x.reshape(N, M, TP, -1).mean(dim=1)                       # [N, C]
+            x = x.reshape(N, M, TP, -1).mean(dim=1)                       # [N, TP, C]
         else:
             x = x.reshape(N, M, TP, VP, -1)
             x = self.head(x)

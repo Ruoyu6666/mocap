@@ -154,8 +154,9 @@ class SkeletonMAE(nn.Module):
         VP = self.joints_embed.grid_size
         # Flag the valid patch
         data_mask  = (x != 0.0).all(dim=-1) #  [B, 300, J] -> True: 3 coordinates all exist
-        patch_mask = data_mask.unfold(1, self.t_patch_size, self.t_patch_size)  # [B, 100, 10, t_patch_size]
-        patch_mask = patch_mask.all(dim=-1) # [B, 100, 10]
+        patch_mask = data_mask.unfold(dimension=1, size=self.t_patch_size, step=self.t_patch_size)  # [B, 100, 10, t_patch_size]
+        patch_mask = patch_mask.unfold(dimension=2, size=self.patch_size, step=self.patch_size)     
+        patch_mask = patch_mask.all(dim=-1).all(dim=-1) # [B, 100, 10]
         self.valid_patch_mask = patch_mask.reshape(NM,  TP * VP)  # [NM, 100 * J=1200]
 
         x = self.joints_embed(x) # embed skeletons NM, TP, VP, C

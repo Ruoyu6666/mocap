@@ -29,14 +29,10 @@ from dataset.sdannce import SdannceDataset
 
 ### For cross validation ###
 # sdannce
-fmr1_fold_1 = {"train":[402, 404, 405, 406, 407, 408],
-               "valid": [401, 403]}
-fmr1_fold_2 = {"train":[401, 403, 405, 406, 407, 408],
-               "valid": [402, 404]}
-fmr1_fold_3 = {"train":[401, 402, 403, 404, 407, 408],
-               "valid": [405, 406]}
-fmr1_fold_4 = {"train":[401, 402, 404, 405, 406, 407],
-               "valid": [403, 408]}
+fmr1_fold_1 = {"train":[402, 404, 405, 406, 407, 408], "valid": [401, 403]}
+fmr1_fold_2 = {"train":[401, 403, 405, 406, 407, 408], "valid": [402, 404]}
+fmr1_fold_3 = {"train":[401, 402, 403, 404, 407, 408], "valid": [405, 406]}
+fmr1_fold_4 = {"train":[401, 402, 404, 405, 406, 407], "valid": [403, 408]}
 
 # mocap
 mocap_fold_1 = {
@@ -284,10 +280,9 @@ def main(args):
                             norm_layer=args.norm_layer, 
                             norm_skes_loss=args.norm_skes_loss,
                             dataset=args.dataset)
-        
+
         total_params = sum(p.numel() for p in  model.parameters() if p.requires_grad)
         print(f'Total number of parameters: {total_params}')
-
     """
     Set up optimizer and training loop
     """
