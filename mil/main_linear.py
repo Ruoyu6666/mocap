@@ -4,111 +4,125 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report
 import argparse
 
-fold_1 = {
-    "CP1A": {"train": ["M14", "M15", "M19"], 
-            "valid": ["M1"]},
-    "CP1B": {"train": ["M2", "M3", "M4", "M5", "M6"], 
-            "valid": ["M1"]},
-    "INH1": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10"],
-            "valid": ["M1", "M6"]},
-    "INH2": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10", "M12"],
-            "valid": ["M1", "M6", "M11"]},
-    "MOS1aD": {"train": ["M5", "M6", "M8", "M9", "M10"],
-            "valid": ["M4"]}
+mocap_fold_1 = {
+    "CP1A": {"train": ["M14", "M15", "M19"], "valid": ["M1"]},
+    "CP1B": {"train": ["M2", "M3", "M4", "M5", "M6"], "valid": ["M1"]},
+    "INH1": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10"], "valid": ["M1", "M6"]},
+    "INH2": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10", "M12"], "valid": ["M1", "M6", "M11"]},
+    "MOS1aD": {"train": ["M5", "M6", "M8", "M9", "M10"], "valid": ["M4"]}
 }
-fold_2 = {
-    "CP1A": {"train": ["M1", "M15", "M19"], 
-            "valid": ["M14"]},
-    "CP1B": {"train": ["M1", "M3", "M4", "M5", "M6"], 
-            "valid": ["M2"]},
-    "INH1": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10"],
-            "valid": ["M2", "M7"]},
-    "INH2": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10", "M11"],
-            "valid": ["M2", "M7", "M12"]},
-    "MOS1aD": {"train": ["M4", "M6", "M8", "M9", "M10"],
-                "valid": ["M5"]}
+mocap_fold_2 = {
+    "CP1A": {"train": ["M1", "M15", "M19"], "valid": ["M14"]},
+    "CP1B": {"train": ["M1", "M3", "M4", "M5", "M6"], "valid": ["M2"]},
+    "INH1": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10"], "valid": ["M2", "M7"]},
+    "INH2": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10", "M11"], "valid": ["M2", "M7", "M12"]},
+    "MOS1aD": {"train": ["M4", "M6", "M8", "M9", "M10"], "valid": ["M5"]}
 }
-fold_3 = {
-    "CP1A": {"train": ["M1", "M14", "M19"], 
-            "valid": ["M15"]},
-    "CP1B": {"train": ["M1", "M2", "M4", "M5", "M6"], 
-            "valid": ["M3"]},
-    "INH1": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M10"],
-            "valid": ["M3", "M8"]},
-    "INH2": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M11", "M12"],
-            "valid": ["M3", "M8", "M10"]},
-    "MOS1aD": {"train": ["M4", "M5", "M8", "M9", "M10"],
-                "valid": ["M6"]}
+mocap_fold_3 = {
+    "CP1A": {"train": ["M1", "M14", "M19"], "valid": ["M15"]},
+    "CP1B": {"train": ["M1", "M2", "M4", "M5", "M6"], "valid": ["M3"]},
+    "INH1": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M10"], "valid": ["M3", "M8"]},
+    "INH2": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M11", "M12"], "valid": ["M3", "M8", "M10"]},
+    "MOS1aD": {"train": ["M4", "M5", "M8", "M9", "M10"], "valid": ["M6"]}
 }
-fold_4 = {
-    "CP1A": {"train": ["M1", "M14", "M15"], 
-            "valid": ["M19"]},
-    "CP1B": {"train": ["M1", "M2", "M3", "M5", "M6"], 
-            "valid": ["M4"]},
-    "INH1": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10"],
-            "valid": ["M4", "M9"]},
-    "INH2": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10", "M12"],
-            "valid": ["M4", "M9", "M11"]},
-    "MOS1aD": {"train": ["M4", "M5", "M6", "M9", "M10"],
-            "valid": ["M8"]}
+mocap_fold_4 = {
+    "CP1A": {"train": ["M1", "M14", "M15"],  "valid": ["M19"]},
+    "CP1B": {"train": ["M1", "M2", "M3", "M5", "M6"],  "valid": ["M4"]},
+    "INH1": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10"], "valid": ["M4", "M9"]},
+    "INH2": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10", "M12"], "valid": ["M4", "M9", "M11"]},
+    "MOS1aD": {"train": ["M4", "M5", "M6", "M9", "M10"], "valid": ["M8"]}
 }
+
+fmr1_fold_1 = {"train":[402, 404, 405, 406, 407, 408], "valid": [401, 403]}
+fmr1_fold_2 = {"train":[401, 403, 405, 406, 407, 408], "valid": [402, 404]}
+fmr1_fold_3 = {"train":[401, 402, 403, 404, 407, 408], "valid": [405, 406]}
+fmr1_fold_4 = {"train":[401, 402, 404, 405, 406, 407], "valid": [403, 408]}
+
 
 parser = argparse.ArgumentParser(description='time classification by TimeMIL')
+parser.add_argument('--dataset', default="sdannce", type=str, help='dataset ')
 parser.add_argument('--label', default="drug", type=str, help='dataset ')
+parser.add_argument('--subseq_len', default=4500, type=int, help='the length of sub sequence')
 
-Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/CLB/mae_mocap_tr_f1.npy", allow_pickle=True)
-Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/CLB/mae_mocap_val_f1.npy", allow_pickle=True)
-with open("/home/rguo_hpc/myfolder/data/mocap/data_CLB.pkl", 'rb') as file:
-    data = pickle.load(file)
+
         
 
 args = parser.parse_args()
-if args.label == "drug":
+if args.dataset == "sdannce":
+    Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/mae_sdannce_tr.npy", allow_pickle=True)
+    Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/mae_sdannce_val.npy", allow_pickle=True)
+    with open("/home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl", 'rb') as file:
+        data = pickle.load(file)
+    N = int(90000 / args.subseq_len) # number of sequences per sequence
+    label_tr = []
+    label_te = []
+    for mouse in fmr1_fold_1["train"]:
+        num_seq = len(data[mouse]["ratgen"])
+        gen  = str(data[mouse]["ratgen"][0])
+        label_tr = label_tr + [gen for i in range(num_seq * N)]
+    for mouse in fmr1_fold_1["valid"]:
+        num_seq = len(data[mouse]["ratgen"])
+        gen = str(data[mouse]["ratgen"][0])
+        label_te = label_te + [gen for i in range(num_seq * N)]
+    mapping = {s: i for i, s in enumerate(set(label_tr))}
+    print(f"Mapping of ratgen labels to integers: {mapping}")
+    ytr = [mapping[s] for s in label_tr]
+    yte = [mapping[s] for s in label_te]
+    y_train = np.array(ytr)
+    y_test = np.array(yte)
+
+
+if args.dataset == "mocap":
+    Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/CLB/mae_mocap_tr_f1.npy", allow_pickle=True)
+    Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/CLB/mae_mocap_val_f1.npy", allow_pickle=True)
+    with open("/home/rguo_hpc/myfolder/data/mocap/data_CLB.pkl", 'rb') as file:
+        data = pickle.load(file)
+    if args.label == "drug":
         drug_tr = []
         drug_te = []
         for dataset_name in ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"]:
-                for mouse_name in fold_1[dataset_name]["train"]:
-                       drug_tr = drug_tr + data[dataset_name][mouse_name]["drug"]
-                for mouse_name in fold_1[dataset_name]["valid"]:
-                       drug_te = drug_te + data[dataset_name][mouse_name]["drug"]
+            for mouse_name in mocap_fold_1[dataset_name]["train"]:
+                drug_tr = drug_tr + data[dataset_name][mouse_name]["drug"]
+            for mouse_name in mocap_fold_1[dataset_name]["valid"]:
+                drug_te = drug_te + data[dataset_name][mouse_name]["drug"]
         
         mapping = {s: i for i, s in enumerate(set(drug_tr))}
         ytr = [mapping[s] for s in drug_tr]
         yte = [mapping[s] for s in drug_te]
         y_train = np.array(ytr)
         y_test = np.array(yte)
-        
-if args.label == "experiment":
+                
+    if args.label == "experiment":
         expe_tr = []
         expe_te = []
         for dataset_name in ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"]:
-                for mouse_name in fold_1[dataset_name]["train"]:
-                       expe_tr = expe_tr + [dataset_name]* len(data[dataset_name][mouse_name]["drug"])
-                for mouse_name in fold_1[dataset_name]["valid"]:
-                       expe_te = expe_te + [dataset_name]* len(data[dataset_name][mouse_name]["drug"])
-        
-        mapping = {s: i for i, s in enumerate(set(expe_tr))}
+            for mouse_name in mocap_fold_1[dataset_name]["train"]:
+                expe_tr = expe_tr + [dataset_name]* len(data[dataset_name][mouse_name]["drug"])
+            for mouse_name in mocap_fold_1[dataset_name]["valid"]:
+                expe_te = expe_te + [dataset_name]* len(data[dataset_name][mouse_name]["drug"])
+            
+            mapping = {s: i for i, s in enumerate(set(expe_tr))}
+            print(mapping)
+            ytr = [mapping[s] for s in expe_tr]
+            yte = [mapping[s] for s in expe_te]
+            y_train = np.array(ytr)
+            y_test = np.array(yte)
+
+    if args.label == "type":
+        type_tr = []
+        type_te = []
+        for dataset_name in ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"]:
+            for mouse_name in mocap_fold_1[dataset_name]["train"]:
+                    type_tr = type_tr + data[dataset_name][mouse_name]["type"]
+            for mouse_name in mocap_fold_1[dataset_name]["valid"]:
+                    type_te = type_te + data[dataset_name][mouse_name]["type"]
+                
+        mapping = {s: i for i, s in enumerate(set(type_tr))}
         print(mapping)
-        ytr = [mapping[s] for s in expe_tr]
-        yte = [mapping[s] for s in expe_te]
+        ytr = [mapping[s] for s in type_tr]
+        yte = [mapping[s] for s in type_te]
         y_train = np.array(ytr)
         y_test = np.array(yte)
-
-if args.label == "type":
-       type_tr = []
-       type_te = []
-       for dataset_name in ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"]:
-               for mouse_name in fold_1[dataset_name]["train"]:
-                     type_tr = type_tr + data[dataset_name][mouse_name]["type"]
-               for mouse_name in fold_1[dataset_name]["valid"]:
-                     type_te = type_te + data[dataset_name][mouse_name]["type"]
-        
-       mapping = {s: i for i, s in enumerate(set(type_tr))}
-       print(mapping)
-       ytr = [mapping[s] for s in type_tr]
-       yte = [mapping[s] for s in type_te]
-       y_train = np.array(ytr)
-       y_test = np.array(yte)
 
 
 # ---- Step 1: Reduce time dimension ----

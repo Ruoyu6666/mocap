@@ -148,7 +148,7 @@ def test(testloader, milnet, criterion, args):
     #test_predictions_prob = np.exp(test_predictions)/np.sum(np.exp(test_predictions),axis=1,keepdims=True)
     test_predictions = np.argmax(test_predictions,axis=1)
     test_labels = np.argmax(test_labels,axis=1)
-    
+    print(f"Test labels: {test_labels}, Test predictions: {test_predictions}")
     """
     mcm = multilabel_confusion_matrix(test_labels, test_predictions) # Compute separate 2×2 matrix per class 
     for i, cm in enumerate(mcm):
@@ -156,8 +156,10 @@ def test(testloader, milnet, criterion, args):
         print(cm)
     """
     cm = confusion_matrix(test_labels, test_predictions)
+    print("Confusion Matrix:")
     print(cm)
-
+    
+    
     avg_score = accuracy_score(test_labels,test_predictions)
     balanced_avg_score = balanced_accuracy_score(test_labels,test_predictions)
 
@@ -194,19 +196,19 @@ def main():
     parser.add_argument('--num_classes', default=2, type=int, help='Number of output classes [2]')
     parser.add_argument('--num_workers', default=4, type=int, help='number of workers used in dataloader [4]')
     # Doesn't matter for skeletonMAE since we load the pre-extracted features
-    parser.add_argument('--feats_size', default=0, type=int, help='Dimension of the feature size [512] resnet-50 1024') 
+    parser.add_argument('--feats_size', default=192, type=int, help='Dimension of the feature size [512] resnet-50 1024') 
     parser.add_argument('--lr', default=0.0005, type=float, help='1e-3 Initial learning rate [0.0002]')
     parser.add_argument('--num_epochs', default=70, type=int, help='Number of total training epochs [40|200]')
     parser.add_argument('--gpu_index', type=int, nargs='+', default=(0,), help='GPU ID(s) [0]')
     parser.add_argument('--weight_decay', default=0.0005, type=float, help='Weight decay 1e-4]')
     parser.add_argument('--dropout_patch', default=0.5, type=float, help='Patch dropout rate [0] 0.5')
-    parser.add_argument('--dropout_node', default=0.2, type=float, help='Bag classifier dropout rate [0]')
-    parser.add_argument('--seed', default=0, type=int, help='random seed')
+    parser.add_argument('--dropout_node', default=0.25, type=float, help='Bag classifier dropout rate [0]')
+    parser.add_argument('--seed', default=42, type=int, help='random seed')
    
     parser.add_argument('--optimizer', default='adamw', type=str, help='adamw sgd')
     parser.add_argument('--save_dir', default='./savemodel/', type=str, help='the directory used to save all the output')
     parser.add_argument('--epoch_des', default=5, type=int, help='turn on warmup')
-    parser.add_argument('--embed', default=256, type=int, help='Number of embedding')
+    parser.add_argument('--embed', default=192, type=int, help='Number of embedding')
     parser.add_argument('--batchsize', default=16, type=int, help='batchsize')
 
     parser.add_argument('--if_interval', default=False, type=str2bool, help='if split the whole time series to intervals, each interval as an instance')
@@ -248,7 +250,7 @@ def main():
             y = load_pickle('/home/rguo_hpc/myfolder/code/mocap/data/mabe_mice/mouse_test_labels.pkl')["strain"] #(3736,)
         elif args.dataset == "mocap":
             """
-            # hbehave/MAE style
+            # hbehave/MAE
             mouse_X = np.load("/home/rguo_hpc/myfolder/code/mocap/outputs/mocap/experiment1/test_submission_0.npy", allow_pickle=True).item()
             X = []
             for mouse_name, indices in mouse_X["frame_number_map"].items():
@@ -257,7 +259,7 @@ def main():
             """
             Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/mae_mocap_tr.npy", allow_pickle=True)
             Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/mae_mocap_val.npy", allow_pickle=True)
-            with open("/home/rguo_hpc/myfolder/data/mocap/data_FL2.pkl", 'rb') as file:
+            with open("/home/rguo_hpc/myfolder/data/mocap/data_FL2_v0.pkl", 'rb') as file:
                 data = pickle.load(file)
             label_tr = []
             label_te = []
@@ -278,11 +280,14 @@ def main():
                     drug = drug + data[dataset_name][mouse_name]["drug"]
                     concentration = concentration + data[dataset_name][mouse_name]["concentration"]
             mapping = {s: i for i, s in enumerate(set(drug))}
-            y = [mapping[s] for s in drug]"""
+            y = [mapping[s] for s in drug]
+            """
         
         elif args.dataset == "sdannce":
-            Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/mae_sdannce_tr.npy", allow_pickle=True)
-            Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/mae_sdannce_val.npy", allow_pickle=True)
+            #Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/fmr1/18_71/mae_sdannce_tr.npy")[:, 40:1540]
+            #Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/fmr1/18_71/mae_sdannce_val.npy")[:, 40:1540]
+            Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/mae_sdannce_tr.npy")[:, 125:4625]
+            Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/mae_sdannce_val.npy")[:, 125:4625]
             with open("/home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl", 'rb') as file:
                 data = pickle.load(file)
             N = int(90000 / args.subseq_len) # number of sequences per sequence
@@ -297,7 +302,7 @@ def main():
                 gen = str(data[mouse]["ratgen"][0])
                 label_te = label_te + [gen for i in range(num_seq * N)]
             mapping = {s: i for i, s in enumerate(set(label_tr))}
-            
+            print(f"Mapping of ratgen labels to integers: {mapping}")
             ytr = [mapping[s] for s in label_tr]
             yte = [mapping[s] for s in label_te]
             print(Xtr.shape, Xte.shape, len(ytr), len(yte))
@@ -307,6 +312,7 @@ def main():
         Xte = torch.from_numpy(Xte)#.permute(0,2,1).float()  
         ytr = F.one_hot(torch.tensor(ytr)).float()
         yte = F.one_hot(torch.tensor(yte)).float()
+        #print(Xtr.shape, Xte.shape, ytr.shape, yte.shape)
         trainset = TensorDataset(Xtr,ytr)
         testset = TensorDataset(Xte, yte)
 
@@ -337,7 +343,7 @@ def main():
         seq_len = Xte.shape[1]
     """    
     # <------------- define MIL network ------------->
-    milnet = MIL(in_features=args.feats_size, mDim=args.embed, n_classes=num_classes, dropout=args.dropout_node, 
+    milnet = TimeMIL(in_features=args.feats_size, mDim=args.embed, n_classes=num_classes, dropout=args.dropout_node, 
                 max_seq_len=seq_len, if_extract_feature=args.if_extract_feature, if_interval=args.if_interval, 
                 instance_len=args.instance_len).cuda()
     

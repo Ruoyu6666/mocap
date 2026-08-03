@@ -6,7 +6,8 @@ import torch
 import logging
 
 
-
+#ESSENTIAL_JOINTS = [1, 2, 3, 6, 7, 8]
+ESSENTIAL_JOINTS = [3, 4, 5, 6, 9, 12, 15]
 
 def compute_svd(points):
     """
@@ -15,10 +16,9 @@ def compute_svd(points):
                 transition matrix: (3, 3), both can be in transform_points 
     """
     hip_coord_back = np.full(points.shape, np.nan)
-    for i in [1 ,2, 3, 6, 7, 8]:
+    for i in ESSENTIAL_JOINTS:
         hip_coord_back[i,:] = points[i,:]
-    # Remove rows with missing values. Results: keypoints (of hips, backs, coords) with complete 3d data
-    points = hip_coord_back[~np.any(np.isnan(hip_coord_back), axis=1)]
+    points = hip_coord_back[~np.any(np.isnan(hip_coord_back), axis=1)] # Remove rows with missing values
     if len(points) == 0:
         return np.nan, np.nan
     
@@ -32,7 +32,7 @@ def compute_svd(points):
 
 class ViewInvariant:
     """
-    Applies a rotation in the XY plane (and optionally XZ plane for pitch) to make skeleton sequences view-invariant. No norm transformation is applied.
+    Applies a rotation in the XY plane (optionally XZ plane for pitch) to make skeleton sequences view-invariant. No norm transformation is applied.
     - Compute SVD on a reference frame to find the body's principal axes.
         - For standing/walking: use A[:,0] (spine axis) — has large XY component.
         - For climbing:         use A[:,2] (perpendicular to back) — spine is vertical so A[:,0] has near-zero XY component → unstable.
@@ -57,7 +57,6 @@ class ViewInvariant:
         """
         Apply a 2D rotation of `angle` radians in the XY plane.
         Args:   array: (..., 3), angle: float
-        Returns:    rotated array of same shape
         """
         cos_a, sin_a = np.cos(angle), np.sin(angle)
         out = np.empty_like(array)
@@ -79,7 +78,6 @@ class ViewInvariant:
         out[..., 2] = - x * sin_a + z * cos_a # Z remains unchanged
         return out
         
-
 
     def _needs_flip(self, rotated_points, A, angle, index_vect=0):
         """
@@ -114,10 +112,7 @@ class ViewInvariant:
         Returns:    barycenter:  (3,)   centroid used to center all frames
                     index_vect:  int    SVD column used (0 = spine, 2 = dorsal)
                     angle:       float  rotation angle in radians (includes flip if needed)
-                    pitch
         """
-        # 0. Define essential joints for computing barycenter
-        ESSENTIAL_JOINTS = [1, 2, 3, 6, 7, 8]
         valid_essential = np.array([np.sum([not np.any(np.isnan(x[t, j]))for j in ESSENTIAL_JOINTS]) for t in range(x.shape[0])]) 
         if np.max(valid_essential) == 0:
             raise ValueError("[ViewInvariant] No frame found where at least one of joints is valid.")
