@@ -27,10 +27,7 @@ class TransLayer(nn.Module):
     def __init__(self, norm_layer=nn.LayerNorm, dropout=0.2, dim=512):
         super().__init__()
         self.norm = norm_layer(dim)
-        self.attn = NystromAttention(
-            dim = dim,
-            dim_head = dim//8,
-            heads = 8,
+        self.attn = NystromAttention(dim = dim, dim_head = dim//8, heads = 8,
             num_landmarks = dim//2,  # number of landmarks
             pinv_iterations = 6,     # number of moore-penrose iterations for approximating pinverse. 6 was recommended by the paper
             residual = True,         # whether to do an extra residual with the value or not. supposedly faster convergence if turned on
@@ -98,8 +95,8 @@ class WaveletEncoding(nn.Module):
         # print(x.shape)
         
         #Eq. 10
-        #x = x + self.proj_1(pos1.transpose(1, 2) + pos2.transpose(1, 2) + pos3.transpose(1, 2))
-        x = x + self.proj_1(pos1.transpose(1,2)) + self.proj_2(pos2.transpose(1,2)) + self.proj_3(pos3.transpose(1,2))# + mixup_encording
+        x = x + self.proj_1(pos1.transpose(1, 2) + pos2.transpose(1, 2) + pos3.transpose(1, 2))
+        #x = x + self.proj_1(pos1.transpose(1,2)) + self.proj_2(pos2.transpose(1,2)) + self.proj_3(pos3.transpose(1,2))# performs not good
         
         # mixup token information
         x = torch.cat((cls_token.unsqueeze(1), x), dim=1)
@@ -174,7 +171,7 @@ class TimeMIL(nn.Module):
         global_token = x.mean(dim=1)#[0]
         # Create class token and concatenate with input
         cls_tokens = self.cls_token.expand(B, -1, -1)    #B * 1 * d
-        x = torch.cat((cls_tokens, x), dim=1)
+        x = torch.cat((cls_tokens, x), dim=1) #B * (N+1) * d
         x = self.pos_layer(x, self.wave1, self.wave2, self.wave3)   # WPE1
         x = self.layer1(x) # TransLayer x1
         x = self.pos_layer2(x, self.wave1_, self.wave2_, self.wave3_) # WPE2

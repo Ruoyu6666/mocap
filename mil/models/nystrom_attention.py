@@ -31,18 +31,10 @@ def moore_penrose_iter_pinv(x, iters = 6):
 
 # main attention class
 class NystromAttention(nn.Module):
-    def __init__(
-        self,
-        dim,
-        dim_head = 64,
-        heads = 8,
-        num_landmarks = 256,
-        pinv_iterations = 6,
-        residual = True,
-        residual_conv_kernel = 33,
-        eps = 1e-8,
-        dropout = 0.
-    ):
+    def __init__(self, dim, dim_head = 64, heads = 8, num_landmarks = 256,
+                pinv_iterations = 6, residual = True, residual_conv_kernel = 33,
+                eps = 1e-8, dropout = 0.):
+        
         super().__init__()
         self.eps = eps
         inner_dim = heads * dim_head
@@ -54,10 +46,7 @@ class NystromAttention(nn.Module):
         self.scale = dim_head ** -0.5
         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
 
-        self.to_out = nn.Sequential(
-            nn.Linear(inner_dim, dim),
-            nn.Dropout(dropout)
-        )
+        self.to_out = nn.Sequential(nn.Linear(inner_dim, dim), nn.Dropout(dropout))
 
         self.residual = residual
         if residual:
@@ -69,8 +58,6 @@ class NystromAttention(nn.Module):
         b, n, _, h, m, iters, eps = *x.shape, self.heads, self.num_landmarks, self.pinv_iterations, self.eps
 
         # pad so that sequence can be evenly divided into m landmarks
-        
-        # print(x.shape)
         remainder = n % m
         if remainder > 0:
             padding = m - (n % m)
@@ -88,7 +75,6 @@ class NystromAttention(nn.Module):
         if exists(mask):
             mask = rearrange(mask, 'b n -> b () n')
             q, k, v = map(lambda t: t * mask[..., None], (q, k, v))
-
         q = q * self.scale
 
         # generate landmarks by sum reduction, and then calculate mean using the mask
@@ -122,7 +108,6 @@ class NystromAttention(nn.Module):
             sim3.masked_fill_(~(mask_landmarks[..., None] * mask[..., None, :]), mask_value)
 
         # eq (15) in the paper and aggregate values
-
         attn1, attn2, attn3 = map(lambda t: t.softmax(dim = -1), (sim1, sim2, sim3))
         attn2_inv = moore_penrose_iter_pinv(attn2, iters)
 
@@ -135,7 +120,6 @@ class NystromAttention(nn.Module):
         # merge and combine heads
         out = rearrange(out, 'b h n d -> b n (h d)', h = h)
         out = self.to_out(out)
-        # print(n)
         out = out[:, -n:]
 
         if return_attn:
