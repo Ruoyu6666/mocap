@@ -22,16 +22,23 @@ from .datasets import BasePoseTrajDataset
 
 
 class SdannceDataset(BasePoseTrajDataset):
-    """Primary Mouse (+Features) dataset."""
-    NUM_INDIVIDUALS = 1
+    """
     NUM_KEYPOINTS = 23
-    SAMPLE_LEN = 4500
-    STR_BODY_PARTS = ["Snout", "EarL", "EarR",  "SpineF", "SpineM", "SpineL", "TailBase", # "SpineL"
-                      "ShoulderL", "ElbowL", "WristL", "HandL", # "HandL, "HandR"
-                      "ShoulderR", "ElbowR", "WristR", "HandR", # "FootL",  "FootR"
+    STR_BODY_PARTS = ["Snout", "EarL", "EarR",  "SpineF", "SpineM", "SpineL", "TailBase",
+                      "ShoulderL", "ElbowL", "WristL", "HandL",
+                      "ShoulderR", "ElbowR", "WristR", "HandR", 
                       "HipL", "KneeL", "AnkleL", "FootL", "HipR", "KneeR", "AnkleR", "FootR",] 
-                      #  5, 10, 14, 18, 22
-    #https://github.com/tqxli/sdannce/blob/master/dannce/engine/skeletons/utils.py
+    # https://github.com/tqxli/sdannce/blob/master/dannce/engine/skeletons/utils.py
+    """
+    NUM_KEYPOINTS = 18
+    STR_BODY_PARTS = ["Snout", "EarL", "EarR",  
+                      "SpineF", "SpineM",  "TailBase",
+                      "ShoulderL", "ElbowL", "WristL", 
+                      "ShoulderR", "ElbowR", "WristR", 
+                      "HipL", "KneeL", "AnkleL", 
+                      "HipR", "KneeR", "AnkleR"] 
+    NUM_INDIVIDUALS = 1
+    SAMPLE_LEN = 4500
     KPTS_DIMENSIONS = 3
     KEYFRAME_SHAPE = (NUM_INDIVIDUALS, NUM_KEYPOINTS, KPTS_DIMENSIONS)
     BODY_PART_2_INDEX = {w: i for i, w in enumerate(STR_BODY_PARTS)}
@@ -46,8 +53,8 @@ class SdannceDataset(BasePoseTrajDataset):
         interp_holes: bool = False,
         augmentations: transforms.Compose = None,
         view_invariant: bool = True, 
-        left_idx:     int = 15,       # default left hip
-        right_idx:    int = 19,       # default right hip
+        left_idx:     int = 12,  #15  default left hip
+        right_idx:    int = 15,  #19  default right hip
         index_frame:  int = 149, 
         normalizer:    str = 'normal',
         model: str = "SkeletonMAE",
@@ -81,24 +88,22 @@ class SdannceDataset(BasePoseTrajDataset):
         self.preprocess()
 
     def load_data(self):
-        """
-        with open(self.path, 'rb') as file:
-            self.raw_data = pickle.load(file)
-        """
         with open(self.path, 'rb') as file:
             result = pickle.load(file)
+            # self.raw_data = pickle.load(file)
         L = self.SAMPLE_LEN
-        N = int(90000 / self.SAMPLE_LEN) # number of sequences per sequence
+        N = int(90000 /self.SAMPLE_LEN) # number of sequences per huge sequence
         
         for mouse in result.keys(): # for each mouse
             num_seq = len(result[mouse]["ratgen"])
             ratgen  = int(result[mouse]["ratgen"][0])
             result[mouse]["ratgen"] = np.full((num_seq * N,), ratgen)
-
             result[mouse]["position"] = np.tile(np.arange(0, N), num_seq)
 
             result[mouse]["m1"] = np.array(result[mouse]["m1"])     # (3, 90000, 3, 23)
-            result[mouse]["m1"] = result[mouse]["m1"].reshape(-1, L, 23, 3)
+            #print(result[mouse]["m1"].shape)
+            result[mouse]["m1"] = result[mouse]["m1"].transpose(0, 1, 3, 2).reshape(-1, L, 23, 3)
+            result[mouse]["m1"] = np.delete(result[mouse]["m1"], [5, 10, 14, 18, 22], axis=-2)
             
             result[mouse]["llac"] = np.array(result[mouse]["llac"]) # (3, 90000, 1)
             result[mouse]["llac"] = np.squeeze(result[mouse]["llac"], axis=2)
@@ -136,7 +141,9 @@ class SdannceDataset(BasePoseTrajDataset):
                     pad_vec = np.pad(vec_seq, ((sub_seq_length// 2, sub_seq_length - sub_seq_length // 2), (0, 0), (0, 0)), mode="edge", )
                     # View Transformation on whole sequnece
                     if self.view_invariant:
-                       pad_vec, _, _  = self.vi(pad_vec, x_supp=(),)
+                        pad_vec, _, _  = self.vi(pad_vec, x_supp=(),)
+                    if self.normalizer == 'normal':
+                        pad_vec, _, _ = self.mocap_normalize(pad_vec)
                     # For extracting subsequenes
                     seq_keypoints.append(pad_vec)
                     keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])
@@ -161,14 +168,12 @@ class SdannceDataset(BasePoseTrajDataset):
         seq = keypoints.reshape(-1, self.NUM_KEYPOINTS, 3)
         if self.interp_holes:
             seq = self.fill_holes(seq)
-        # View Transformation on each sample
-        #if self.view_invariant:
-        #    seq, _, _  = self.vi(seq, x_supp=(),)
+        """
+        if self.view_invariant:
+            seq, _, _  = self.vi(seq, x_supp=(),) # View Transformation on each sample
         if self.normalizer == 'normal':
             seq, _, _ = self.mocap_normalize(seq)
-        elif self.normalizer == 'cube':
-            seq, _, _ = self.normalize_cube(seq)
-        
+        """
         seq = torch.tensor(seq, dtype=torch.float32)
         if self.model == "SkeletonMAE":
             seq = torch.unsqueeze(seq, dim = 1)
@@ -191,9 +196,11 @@ class SdannceDataset(BasePoseTrajDataset):
             print('[Normalize] Warning: NaN in min/max — sequence may be all-NaN.')
 
         range_     = max_ - min_                      # (3,)
-        safe_range = np.where(range_ == 0, 1.0, range_)
-        x_norm     = 2 * (x - min_) / safe_range - 1
-        x_norm[..., range_ == 0] = 0.0               # constant axis → 0 (midpoint)
+        invalid_mask = np.isnan(range_) | (range_ < 1e-8)  # Identify invalid/flat axes (zero or NaN range)
+
+        safe_range = np.where(invalid_mask, 1.0, range_) # Use np.where to prevent 0/0 or nan/nan division warnings    
+        x_norm = 2 * (x - min_) / safe_range - 1
+        x_norm[..., invalid_mask] = 0.0 # Zero out axes that were constant or all-NaN
 
         return x_norm, min_, max_
     

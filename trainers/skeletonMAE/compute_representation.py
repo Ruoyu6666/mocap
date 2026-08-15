@@ -71,6 +71,7 @@ from models.skeletonMAE.model.encoder import STTFEncoder
 from dataset.mabe_mice import MABeMouseDataset
 from dataset.mocap import MocapDataset
 from dataset.sdannce import SdannceDataset
+from dataset.eyetrack import EyetrackDataset
 
 
 
@@ -116,10 +117,6 @@ def get_args_parser():
     """Training parameters"""
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=50)
-    #parser.add_argument("--lr", type=float, default=1e-4)
-    #parser.add_argument('--blr', type=float, default=1e-3, metavar='LR', help='base learning rate: absolute_lr = base_lr * total_batch_size / 256')
-    #parser.add_argument('--min_lr', type=float, default=0., metavar='LR', help='lower lr bound for cyclic schedulers that hit 0')
-    #parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
 
     """Saving and logging"""
     parser.add_argument("--log_interval", type=int, default=100)
@@ -134,13 +131,31 @@ def get_args_parser():
 
 
 
+def make_taper_window(latent_len, edge_frac=0.25):
+    """
+    Hann-style taper: weight ~0 at edges, ~1 in the middle.
+    edge_frac controls how much of the window is ramp vs flat top.
+    """
+    ramp_len = max(1, int(latent_len * edge_frac))
+    window = torch.ones(latent_len)
+    ramp = 0.5 * (1 - torch.cos(torch.linspace(0, torch.pi, ramp_len)))
+    window[:ramp_len] = ramp
+    window[-ramp_len:] = ramp.flip(0)
+    return window  # shape (latent_len,)
+
+
+
+
+
 def compute_representations(model, data_loader, device, args):
     os.makedirs(args.save_dir + '/representations', exist_ok=True)
     model = model.to(device)
     model.eval()
     all_representations = []
     num_sequences = data_loader.dataset.num_sequences
-
+    full_len = data_loader.dataset.seq_keypoints.shape[1] # length of the full sequence (after padding if applicable)
+    # eyetrack
+    # num_sequences, full_len = 120, 71
     if args.fast_inference:
         with torch.no_grad():
             for i, (x, _)  in enumerate(tqdm(data_loader)):
@@ -149,29 +164,31 @@ def compute_representations(model, data_loader, device, args):
                 all_representations.append(torch.squeeze(latent).cpu().numpy())
                 if (i + 1) % args.log_interval == 0:
                     print(f"Processed {i+1}/{len(data_loader)} batches.")
-
         all_representations = np.concatenate(all_representations, axis=0)
         all_representations = all_representations.reshape(num_sequences, -1, args.dim_feat) # (N, T, C)
-    
+
     else:
-        full_len = data_loader.dataset.seq_keypoints.shape[1] # length of the full sequence (after padding if applicable)
-        #starts = list(range(0, full_len - args.num_frames + 1, args.sliding_window))
         repr_sum = torch.zeros(num_sequences, int(full_len/args.t_patch_size), args.dim_feat)
         count_sum = torch.zeros(num_sequences, int(full_len/args.t_patch_size), 1)
+        #taper_window = np.concatenate([np.zeros(10, dtype=int), np.hanning(30), np.zeros(10, dtype=int)])
+        #taper_tensor =  np.expand_dims(taper_window, axis=-1)
+
         with torch.no_grad():
-             for i, (x, _)  in enumerate(tqdm(data_loader)): # i, index of the batch; x, batch of subsequences;
-                keypoints_id = data_loader.dataset.keypoints_ids[i*args.batch_size:(i+1)*args.batch_size] # list of tuples (seq_id, start_idx) for each subsequence in the batch
+            for i, (x, _)  in enumerate(tqdm(data_loader)): # i, index of the batch; x, batch of subsequences;
                 x = x.to(device) # [B, 300, 1, 10, 3]
-                latent = model(x)# (B, 100, D)
-                latent = torch.squeeze(latent).cpu().detach().numpy() # (B, 100, D)
-                latent_len = latent.shape[1]
+                latent = model(x)
+                latent = torch.squeeze(latent).cpu().detach().numpy()
+                keypoints_id = data_loader.dataset.keypoints_ids[i*args.batch_size:(i+1)*args.batch_size] # list of tuples (seq_id, start_idx) for each subsequence in the batch
                 for j in range(len(keypoints_id)):
-                        seq_id, start_idx = keypoints_id[j]
-                        start_idx = int(start_idx/args.t_patch_size) # convert from frame index to index in the representation (since representation is 1 per 3 frames)
-                        repr_sum[seq_id, start_idx:start_idx+latent_len]  += torch.from_numpy(latent[j])
-                        count_sum[seq_id, start_idx:start_idx+latent_len] += 1
-                all_representations = repr_sum / count_sum # (N, T, C)
-    
+                    seq_id, start_idx = keypoints_id[j]
+                    start_idx = int(start_idx/args.t_patch_size) # convert from frame index to index in the representation
+                    sub_latent = latent[j]
+
+                    #weighted_latent = sub_latent * taper_tensor
+                    repr_sum[seq_id, start_idx:start_idx+latent_len]  += torch.from_numpy(sub_latent) # weighted_latent
+                    count_sum[seq_id, start_idx:start_idx+latent_len] += 1                            # taper_tensor
+
+        all_representations = repr_sum / count_sum # (N, T, C)
     if args.if_val:
         np.save(args.save_dir + '/representations/mae_'+ args.dataset +'_val.npy', all_representations)
     else:
@@ -199,7 +216,7 @@ if __name__ == "__main__":
                                        path_to_data_dir=args.path_to_data_dir,
                                        sampling_rate=args.sampling_rate,
                                        num_frames=args.num_frames,
-                                       sliding_window=args.num_frames if args.fast_inference else args.sliding_window,
+                                       sliding_window=args.sliding_window,
                                        interp_holes=args.interp_holes,
                                        augmentations=args.data_augment,
                                        view_invariant = args.view_invariant, 
@@ -224,7 +241,8 @@ if __name__ == "__main__":
                                 model = "SkeletonMAE",
                                 split = None, # whether to split dataset by mouse for train/val
                                 if_val = args.if_val,)
-            
+        elif args.dataset == "eyetract":
+            dataset = EyetrackDataset(path_to_data_dir=args.path_to_data_dir, num_frames = args.num_frames)
 
         loader = DataLoader(dataset, #sampler=sampler_test, 
                             batch_size=args.batch_size, 
@@ -257,6 +275,6 @@ if __name__ == "__main__":
 
         # load pre-trained model
         model.load_state_dict(checkpoint_model, strict=False)
-
+        latent_len = int(args.num_frames/args.t_patch_size)
         compute_representations(model, loader, device, args)
     

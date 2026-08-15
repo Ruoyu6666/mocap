@@ -40,11 +40,12 @@ import random
 import warnings
 from timm.optim.adamp import AdamP
 
+from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
 from sklearn.metrics import roc_curve, roc_auc_score,precision_recall_fscore_support,f1_score,accuracy_score,precision_score,recall_score,balanced_accuracy_score
 from sklearn.datasets import load_svmlight_file
 from sklearn.metrics import multilabel_confusion_matrix #gives a 2×2 confusion matrix for each class (one-vs-rest style).
-from sklearn.metrics import confusion_matrix # standard confucsion matrix
+from sklearn.metrics import confusion_matrix
 #from aeon.datasets import load_classification
 #from mydataload import loadorean
 
@@ -149,12 +150,7 @@ def test(testloader, milnet, criterion, args):
     test_predictions = np.argmax(test_predictions,axis=1)
     test_labels = np.argmax(test_labels,axis=1)
     print(f"Test labels: {test_labels}, Test predictions: {test_predictions}")
-    """
-    mcm = multilabel_confusion_matrix(test_labels, test_predictions) # Compute separate 2×2 matrix per class 
-    for i, cm in enumerate(mcm):
-        print(f"Class {i} confusion matrix:")
-        print(cm)
-    """
+
     cm = confusion_matrix(test_labels, test_predictions)
     print("Confusion Matrix:")
     print(cm)
@@ -212,7 +208,7 @@ def main():
     parser.add_argument('--batchsize', default=16, type=int, help='batchsize')
 
     parser.add_argument('--if_interval', default=False, type=str2bool, help='if split the whole time series to intervals, each interval as an instance')
-    parser.add_argument('--instance_len', default=30, type=int, help='the length of instance')
+    parser.add_argument('--instance_len', default=5, type=int, help='the length of instance')
     parser.add_argument('--if_extract_feature', default=True, type=str2bool, help='if extract feature')
     parser.add_argument('--subseq_len', default=3600, type=int, help='the length of sub sequence')
 
@@ -242,7 +238,7 @@ def main():
     # criterion = nn.CrossEntropyLoss(label_smoothing=0.0)#0.01
     criterion = nn.BCEWithLogitsLoss() # one-vs-rest binary MIL
     # scaler = GradScaler()
-    if args.dataset in ["mabe_mice", "mocap","sdannce" ]:
+    if args.dataset in ["mabe_mice", "mocap","sdannce", "eyetract" ]:
         # load embedding
         if args.dataset == "mabe_mice":
             #Skeleton MAE
@@ -282,12 +278,19 @@ def main():
             mapping = {s: i for i, s in enumerate(set(drug))}
             y = [mapping[s] for s in drug]
             """
-        
+        elif args.dataset == "eyetract":
+            raw_data = np.load("/home/rguo_hpc/myfolder/data/eye/eyetrack.pkl", allow_pickle=True)
+            X = raw_data["X"]
+            X = np.load("/home/rguo_hpc/myfolder/mocap/outputs/eyetrack/representations/mae_eyetract_tr.npy")
+            y = raw_data["y"]
+            Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
+
         elif args.dataset == "sdannce":
             #Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/fmr1/18_71/mae_sdannce_tr.npy")[:, 40:1540]
             #Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/fmr1/18_71/mae_sdannce_val.npy")[:, 40:1540]
-            Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/mae_sdannce_tr.npy")[:, 125:4625]
-            Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/mae_sdannce_val.npy")[:, 125:4625]
+            Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/50patch3/representations/mae_sdannce_tr.npy")[:, 25:4525]
+            Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/50patch3/representations/mae_sdannce_val.npy")[:, 25:4525]
+
             with open("/home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl", 'rb') as file:
                 data = pickle.load(file)
             N = int(90000 / args.subseq_len) # number of sequences per sequence
@@ -305,21 +308,19 @@ def main():
             print(f"Mapping of ratgen labels to integers: {mapping}")
             ytr = [mapping[s] for s in label_tr]
             yte = [mapping[s] for s in label_te]
-            print(Xtr.shape, Xte.shape, len(ytr), len(yte))
-        #from sklearn.model_selection import train_test_split
-        #Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
-        Xtr = torch.from_numpy(Xtr)#.permute(0,2,1).float() #(2802, 128, 1800) -> (2802, 1800, 128)
-        Xte = torch.from_numpy(Xte)#.permute(0,2,1).float()  
+
+        Xtr = torch.from_numpy(Xtr).float()#.permute(0,2,1).float() #(2802, 128, 1800) -> (2802, 1800, 128)
+        Xte = torch.from_numpy(Xte).float()#.permute(0,2,1).float()  
         ytr = F.one_hot(torch.tensor(ytr)).float()
         yte = F.one_hot(torch.tensor(yte)).float()
-        #print(Xtr.shape, Xte.shape, ytr.shape, yte.shape)
+        print(Xtr.shape, Xte.shape, ytr.shape, yte.shape)
         trainset = TensorDataset(Xtr,ytr)
         testset = TensorDataset(Xte, yte)
 
         args.feats_size = Xtr.shape[-1]
-        num_classes = len(set(label_tr))
-        args.num_classes =  len(set(label_tr))
-        print(f'num class:{args.num_classes}' )
+        #num_classes = len(set(label_tr))
+        #args.num_classes =  len(set(label_t)r))
+        #print(f'num class:{args.num_classes}' )
         seq_len = Xtr.shape[1]
     """
     elif args.dataset in ["moseq","mabe_mouse_72"]:
@@ -343,9 +344,9 @@ def main():
         seq_len = Xte.shape[1]
     """    
     # <------------- define MIL network ------------->
-    milnet = TimeMIL(in_features=args.feats_size, mDim=args.embed, n_classes=num_classes, dropout=args.dropout_node, 
-                max_seq_len=seq_len, if_extract_feature=args.if_extract_feature, if_interval=args.if_interval, 
-                instance_len=args.instance_len).cuda()
+    milnet = TimeMIL(in_features=args.feats_size, mDim=args.embed, n_classes=args.num_classes, 
+                     dropout=args.dropout_node, max_seq_len=seq_len, if_extract_feature=args.if_extract_feature, 
+                     if_interval=args.if_interval, instance_len=args.instance_len).cuda()
     
     # total number of trainable model parameters
     total_params = sum(p.numel() for p in  milnet.parameters() if p.requires_grad)
