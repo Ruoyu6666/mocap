@@ -96,7 +96,7 @@ class WaveletEncoding(nn.Module):
         
         #Eq. 10
         x = x + self.proj_1(pos1.transpose(1, 2) + pos2.transpose(1, 2) + pos3.transpose(1, 2))
-        #x = x + self.proj_1(pos1.transpose(1,2)) + self.proj_2(pos2.transpose(1,2)) + self.proj_3(pos3.transpose(1,2))# performs not good
+        #x = x + self.proj_1(pos1.transpose(1,2)) + self.proj_2(pos2.transpose(1,2)) + self.proj_3(pos3.transpose(1,2)) # worsen the performance
         
         # mixup token information
         x = torch.cat((cls_token.unsqueeze(1), x), dim=1)
@@ -106,14 +106,12 @@ class WaveletEncoding(nn.Module):
 
 class TimeMIL(nn.Module):
     def __init__(self, in_features=512, mDim=64, n_classes=2, dropout=0.,max_seq_len=400,
-                 if_extract_feature=False, if_interval=False, instance_len=30 # length of each patch
-                ):
+                 if_extract_feature=False, if_interval=False, instance_len=5):
         super().__init__()
-
-        self.if_interval = if_interval                  # if downsize the time series by pooling in each patch
+        self.if_interval = if_interval                  # if downsize the sequences by conv
         self.if_extract_feature = if_extract_feature    # False: use pretrained feature
         if if_interval:
-            self.start_conv=StartConv(d_in=in_features, d_out=mDim)
+            self.start_conv=StartConv(d_in=in_features, d_out=mDim, kernel_size=instance_len, stride=instance_len)
             if self.if_extract_feature:
                 self.feature_extractor = InceptionTimeFeatureExtractor(n_in_channels=mDim, out_channels=mDim//4)
         else:
@@ -176,8 +174,7 @@ class TimeMIL(nn.Module):
         x = self.layer1(x) # TransLayer x1
         x = self.pos_layer2(x, self.wave1_, self.wave2_, self.wave3_) # WPE2
         x = self.layer2(x) # TransLayer x2
-        #representation = x[:, 1:]
-        x0 = x[:, 0]         # only cls_token is used for cls
+        x0 = x[:, 0]       # only cls_token is used for cls
         
         # stablity of training random initialized global token
         if warmup:

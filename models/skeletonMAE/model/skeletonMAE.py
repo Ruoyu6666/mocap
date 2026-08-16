@@ -101,7 +101,7 @@ class SkeletonMAE(nn.Module):
     
     """
     # First mask entire frames may be more effective to learn temporal dynamics, then mask joints may be more effective to learn spatial correlations. 
-    def random_masking(self, x, frame_mask_ratio=0.6, joint_mask_ratio=0.5):
+    def random_masking(self, x, frame_mask_ratio=0.5, joint_mask_ratio=0.5):
         N, L, D = x.shape
         TP = self.joints_embed.t_grid_size
         VP = self.joints_embed.grid_size
@@ -237,6 +237,7 @@ class SkeletonMAE(nn.Module):
         loss = (loss * reconstruct_mask).sum() / reconstruct_mask.sum().clamp(min=1.0)  # mean loss on removed valid joints
         
         return loss
+
     
     def forward(self, x, mask_ratio=0.80, **kwargs):
 

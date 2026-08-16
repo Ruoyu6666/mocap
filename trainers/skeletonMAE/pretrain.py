@@ -15,16 +15,17 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 from trainers.utils import *
-from models.skeletonMAE.util import lr_decay as lrd
-from models.skeletonMAE.util import misc as misc
+#from models.skeletonMAE.util import lr_decay as lrd
+#from models.skeletonMAE.util import misc as misc
 #from models.MAE.util.datasets import build_dataset
-from models.skeletonMAE.util.pos_embed import interpolate_temp_embed
+#from models.skeletonMAE.util.pos_embed import interpolate_temp_embed
 #from models.MAE.util.misc import NativeScalerWithGradNormCount as NativeScaler
 
 from models.skeletonMAE.model.skeletonMAE import SkeletonMAE
 from dataset.mabe_mice import MABeMouseDataset
 from dataset.mocap import MocapDataset
 from dataset.sdannce import SdannceDataset
+from dataset.eyetrack import EyetrackDataset
 
 
 ### For cross validation ###
@@ -254,7 +255,8 @@ def main(args):
             loader_test = DataLoader(dataset_test, #sampler=sampler_test,
                                      batch_size=args.batch_size, num_workers=args.num_workers,
                                      pin_memory=args.pin_mem, drop_last=False,)
-    
+    if args.dataset == "eyetract":
+        dataset_train = EyetrackDataset(path_to_data_dir=args.path_to_data_dir, num_frames = args.num_frames)
     loader_train = DataLoader(dataset_train, #sampler=sampler_train,
                                  batch_size=args.batch_size, num_workers=args.num_workers,
                                  pin_memory=args.pin_mem, drop_last=True,)

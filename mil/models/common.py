@@ -13,21 +13,16 @@ import numbers
 
 # when each instance is
 class StartConv(nn.Module):
-    def __init__(self, d_in: int, d_out: int, kernel_size: int=3, stride: int=1, padding: int=0):
+    def __init__(self, d_in: int, d_out: int, kernel_size: int=5, stride: int=5):
         super().__init__()
-        self.conv = nn.Conv1d(
-            in_channels=d_in,     # feature dims
-            out_channels=d_out,   # new feature channels
-            kernel_size=kernel_size, stride=stride, padding=padding
-        )
-        self.d_out = d_out
+        self.conv = nn.Conv1d(in_channels=d_in, out_channels=d_out,
+                              kernel_size=kernel_size, stride=stride)
 
     def forward(self, x):
-        B, N, T, D = x.shape                        # (batch_size, num_instance, len_per_patch, dimension)
-        x = x.reshape(B * N, T, D).permute(0, 2, 1) # (B * N, D, T)
-        x = torch.relu(self.conv(x))                # (B*N, hidden, T)
-        x = x.mean(dim=-1)                          # Global average pooling over time: (B*N, hidden)
-        return x.reshape(B, N, self.d_out)          # reshape back
+        x = x.transpose(1, 2)   # (B, D, L)
+        x = self.conv(x)        # (B, D, ~L/5)
+        x = x.transpose(1, 2)   # (B, ~L/5, D)
+        return x
 
     
 
@@ -36,23 +31,17 @@ class ConvBlock(nn.Module):
     """
     Convolutional module: Conv1D + BatchNorm + (optional) ReLU.
     """
-    def __init__(
-        self, 
-        n_in_channels: int,  n_out_channels: int, kernel_size: int, 
-        padding_mode: str = "replicate", include_relu: bool = True,
-    ) :
+    def __init__(self, n_in_channels: int,  n_out_channels: int, kernel_size: int, 
+                 padding_mode: str = "replicate", include_relu: bool = True,) :
         super().__init__()
         
-        layers = [
-            nn.Conv1d(
-                in_channels=n_in_channels,
-                out_channels=n_out_channels,
-                kernel_size=kernel_size,
-                padding="same",
-                padding_mode=padding_mode,
-            ),
-            nn.BatchNorm1d(num_features=n_out_channels),
-        ]
+        layers = [nn.Conv1d(
+                    in_channels=n_in_channels,
+                    out_channels=n_out_channels,
+                    kernel_size=kernel_size,
+                    padding="same",
+                    padding_mode=padding_mode,),
+                 nn.BatchNorm1d(num_features=n_out_channels),]
         
         if include_relu:
             layers.append(nn.ReLU())

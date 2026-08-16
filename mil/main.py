@@ -288,8 +288,8 @@ def main():
         elif args.dataset == "sdannce":
             #Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/fmr1/18_71/mae_sdannce_tr.npy")[:, 40:1540]
             #Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/fmr1/18_71/mae_sdannce_val.npy")[:, 40:1540]
-            Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/50patch3/representations/mae_sdannce_tr.npy")[:, 25:4525]
-            Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/50patch3/representations/mae_sdannce_val.npy")[:, 25:4525]
+            Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/50/representations/mae_sdannce_tr.npy")[:, 25:4525]
+            Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/50/representations/mae_sdannce_val.npy")[:, 25:4525]
 
             with open("/home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl", 'rb') as file:
                 data = pickle.load(file)
