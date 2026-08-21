@@ -4,18 +4,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-
-
 # --------------------------------------------------------------------------
 # 1. Prototype layer
 # --------------------------------------------------------------------------
-
 class PrototypeLayer(nn.Module):
     """
-    Learnable prototypes C in R^{D x K}, kept L2-normalized on the unit sphere
-    (per SwAV). Call `normalize_prototypes()` after every optimizer.step().
+    Learnable prototypes C in R^{D x K}, kept L2-normalized on the unit sphere (per SwAV). 
+    Call `normalize_prototypes()` after every optimizer.step().
     """
-
     def __init__(self, embed_dim: int, num_prototypes: int = 60):
         super().__init__()
         self.prototypes = nn.Linear(embed_dim, num_prototypes, bias=False)
@@ -29,8 +25,8 @@ class PrototypeLayer(nn.Module):
     @torch.no_grad()
     def init_from_centers(self, centers: torch.Tensor):
         """
-        centers: (K, D) tensor, e.g. GMM means or watershed-region centroids computed on your existing pretrained embeddings. 
-        Gives the prototypes a behaviorally meaningful head start instead of random init.
+        centers: (K, D) tensor, e.g. GMM means or watershed-region centroids computed on existing pretrained embeddings. 
+                 Gives the prototypes a behaviorally meaningful head start instead of random init.
         """
         assert centers.shape == self.prototypes.weight.shape, (f"expected {self.prototypes.weight.shape}, got {centers.shape}")
         centers = F.normalize(centers, dim=1, p=2)
@@ -47,8 +43,8 @@ class ProjectionHead(nn.Module):
     """
     Small trainable MLP between the (possibly frozen) encoder output and the prototype layer. Always trainable regardless of encoder mode.
  
-    Why this matters for mode="freeze": since the encoder never gets gradients, head(z) is the only thing that actually changes during
-    training. Its output is a legitimate new frame representation — you choose out_dim — even though the backbone was never touched. 
+    When mode="freeze": since the encoder never gets gradients, head(z) is the only thing that actually changes during training. 
+    Its output is a legitimate new frame representation — you choose out_dim — even though the backbone was never touched. 
     Use head(z) (L2-normalized) as your new per-frame embedding instead of, or alongside, the raw frozen z.
     """
  

@@ -27,13 +27,13 @@ class TransLayer(nn.Module):
     def __init__(self, norm_layer=nn.LayerNorm, dropout=0.2, dim=512):
         super().__init__()
         self.norm = norm_layer(dim)
-        self.attn = NystromAttention(dim = dim, dim_head = dim//8, heads = 8,
+        self.attn = NystromAttention(
+            dim = dim, dim_head = dim//8, heads = 8,
             num_landmarks = dim//2,  # number of landmarks
             pinv_iterations = 6,     # number of moore-penrose iterations for approximating pinverse. 6 was recommended by the paper
             residual = True,         # whether to do an extra residual with the value or not. supposedly faster convergence if turned on
             dropout=dropout
         )
-
     def forward(self, x):
         x = x + self.attn(self.norm(x))
         return x
@@ -53,7 +53,7 @@ def mexican_hat_wavelet(size, scale, shift): #size :d*kernelsize  scale:d*1 shif
     Returns:
     torch.Tensor: Mexican Hat wavelet kernel.
     """
-    x = torch.linspace(-( size[1]-1)//2, ( size[1]-1)//2, size[1]).cuda()
+    x = torch.linspace(-( size[1]-1)//2, ( size[1]-1)//2, size[1], device=scale.device)
     x = x.reshape(1, -1).repeat(size[0],1)
     x = x - shift  # Apply the shift
 
@@ -182,11 +182,4 @@ class TimeMIL(nn.Module):
         logits = self._fc2(x0)
             
         return x, logits
-
-
-if __name__ == "__main__":
-    x = torch.randn(3, 400, 4).cuda()
-    model = TimeMIL(in_features=4,mDim=128).cuda()
-    ylogits =model(x)
-    print(ylogits.shape)
 
