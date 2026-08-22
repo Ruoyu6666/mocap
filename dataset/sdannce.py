@@ -9,27 +9,26 @@ import numpy as np
 import torch
 from torchvision import transforms
 
+from .transform import NormalizeConfig, _compute_root, center_skeleton, scale_normalize, _yaw_rotation_matrix, rotation_normalize, normalize_skeleton_sequence
 from .transform import ViewInvariant
 from .augmentations import GaussianNoise, Reflect, Rotation
 from .datasets import BasePoseTrajDataset
+"""
+head (Snout, EarL, EarR, SpineF), 
+trunk (SpineM, SpineL, TailBase, ShoulderL, ShoulderR, HipL, HipR), 
+forelimbs (ElbowL, WristL, HandL,ElbowR, WristR, HandR) 
+forelimbs (KneeL, AnkleL, FootL, KneeR, AnkleR, FootR)
+The size of each animal was estimated by sampling the distance between two virtual markers (the snout and the tail base)
 
-#head (Snout, EarL, EarR, SpineF), 
-#trunk (SpineM, SpineL, TailBase, ShoulderL, ShoulderR, HipL, HipR), 
-#forelimbs (ElbowL, WristL, HandL,ElbowR, WristR, HandR) 
-#forelimbs (KneeL, AnkleL, FootL, KneeR, AnkleR, FootR)
-# (24, 90000, 23, 3) -> (600, 3600, 23, 3)
-# the size of each animal was estimated by sampling the distance between two virtual markers (the snout and the tail base)
+NUM_KEYPOINTS = 23
+STR_BODY_PARTS = ["Snout", "EarL", "EarR",  "SpineF", "SpineM", "SpineL", "TailBase",
+                "ShoulderL", "ElbowL", "WristL", "HandL", "ShoulderR", "ElbowR", "WristR", "HandR", 
+                "HipL", "KneeL", "AnkleL", "FootL", "HipR", "KneeR", "AnkleR", "FootR",] 
+# https://github.com/tqxli/sdannce/blob/master/dannce/engine/skeletons/utils.py
 
+"""
 
 class SdannceDataset(BasePoseTrajDataset):
-    """
-    NUM_KEYPOINTS = 23
-    STR_BODY_PARTS = ["Snout", "EarL", "EarR",  "SpineF", "SpineM", "SpineL", "TailBase",
-                      "ShoulderL", "ElbowL", "WristL", "HandL",
-                      "ShoulderR", "ElbowR", "WristR", "HandR", 
-                      "HipL", "KneeL", "AnkleL", "FootL", "HipR", "KneeR", "AnkleR", "FootR",] 
-    # https://github.com/tqxli/sdannce/blob/master/dannce/engine/skeletons/utils.py
-    """
     NUM_KEYPOINTS = 18
     STR_BODY_PARTS = ["Snout", "EarL", "EarR",  
                       "SpineF", "SpineM",  "TailBase",

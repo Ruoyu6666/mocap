@@ -1,17 +1,12 @@
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
+# This source code is licensed under the license found in the LICENSE file in the root directory of this source tree.
 # --------------------------------------------------------
 #
-# For more details on our work, please refer to:
-# Elucidating the Hierarchical Nature of Behavior with Masked Autoencoders
-# Lucas Stoffl, Andy Bonnetto, Stéphane d'Ascoli, Alexander Mathis
+# For more details on our work, please refer to: # Elucidating the Hierarchical Nature of Behavior with Masked Autoencoders
 # https://www.biorxiv.org/content/10.1101/2024.08.06.606796v1
 # --------------------------------------------------------
 
 import __future__
-
 import random
-
 import numpy as np
 
 # Some functions are adapted from TREBA

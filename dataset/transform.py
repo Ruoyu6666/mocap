@@ -1,13 +1,147 @@
-import numpy as np
-#import plotly.graph_objects as go
 import os
-import pandas as pd
+import numpy as np
 import torch
-import logging
 
 
 #ESSENTIAL_JOINTS = [1, 3, 6, 8]
 ESSENTIAL_JOINTS = [3, 4, 5, 6, 9, 12, 15]
+
+
+"""
+Skeleton normalization: centering + scale normalization + rotation normalization.
+Input shape convention: (N, T, V, 3)
+Root joint = mean of (left_shoulder, right_shoulder, left_hip, right_hip),
+
+Because z is the true vertical axis, rotation normalization here is YAW-ONLY:  we rotate about the z-axis to 
+align the body's facing direction (shoulder line) to a canonical direction in the xy-plane. We deliberately do NOT 
+do a full 3D re-orientation (e.g. aligning a spine vector to an axis) -- that would tilt the skeleton and 
+corrupt the vertical axis, which is already meaningful/canonical in your coordinate system.
+
+Adjust JOINT indices below to match your skeleton layout.
+"""
+
+
+
+
+class NormalizeConfig:
+    def __init__(self, left_shoulder: int=6, right_shoulder: int=9, left_hip: int=12, right_hip: int=15, eps: float=1e-8):
+        self.left_shoulder = left_shoulder
+        self.right_shoulder = right_shoulder
+        self.left_hip = left_hip
+        self.right_hip = right_hip
+        self.eps = eps
+
+
+def _compute_root(x: np.ndarray, cfg: NormalizeConfig) -> np.ndarray:
+    # x: (N, T, V, 3) -> returns (N, T, 3)
+    joints = x[:, :, [cfg.left_shoulder, cfg.right_shoulder, cfg.left_hip, cfg.right_hip], :]   # (N, T, 4, 3)
+    return joints.mean(axis=2)
+
+
+def center_skeleton(x: np.ndarray, cfg: NormalizeConfig = NormalizeConfig()) -> np.ndarray:
+    """
+    Subtract the computed root (per-frame) from every joint.
+    x: (N, T, V, 3) -> returns same shape, translation-invariant.
+    """
+    root = _compute_root(x, cfg)[:, :, None, :]   # (N, T, 1, 3)
+    return x - root
+
+
+def scale_normalize(x: np.ndarray, cfg: NormalizeConfig = NormalizeConfig()) -> np.ndarray:
+    """
+    Normalize by average torso size: distance between mid-shoulder and mid-hip, averaged across all valid frames per sequence. 
+    Assumes x is already centered (though it doesn't have to be -- this uses relative distances only).
+    """
+    mid_shoulder = (x[:, :, cfg.left_shoulder, :] + x[:, :, cfg.right_shoulder, :]) / 2.0
+    mid_hip = (x[:, :, cfg.left_hip, :] + x[:, :, cfg.right_hip, :]) / 2.0
+    torso_len = np.linalg.norm(mid_shoulder - mid_hip, axis=-1)   # (N, T)
+
+    valid = torso_len > cfg.eps
+    scale = np.zeros(x.shape[0], dtype=x.dtype)
+    for n in range(x.shape[0]):
+        if valid[n].any():
+            scale[n] = torso_len[n][valid[n]].mean()
+        else:
+            scale[n] = 1.0  # fallback: no-op if sequence is degenerate
+
+    scale = np.maximum(scale, cfg.eps).reshape(-1, 1, 1, 1)
+    return x / scale
+
+
+def _yaw_rotation_matrix(left_sh, right_sh, eps):
+    """
+    Compute a rotation-about-z (yaw) matrix per sequence that aligns the shoulder line (left_shoulder -> right_shoulder), 
+    projected onto the xy-plane, to the canonical +x axis. z is left completely unchanged.
+
+    left_sh, right_sh: (N, 3) -- one reference frame per sequence.
+    Returns R: (N, 3, 3).
+    """
+    shoulder_vec = right_sh - left_sh                # (N, 3)
+    angle = np.arctan2(shoulder_vec[:, 1], shoulder_vec[:, 0])  # (N,)
+
+    cos_a, sin_a = np.cos(angle), np.sin(angle)
+    N = angle.shape[0]
+    R = np.zeros((N, 3, 3), dtype=shoulder_vec.dtype)
+    # Rotate by -angle about z so shoulder_vec lands on +x axis:
+    R[:, 0, 0] = cos_a
+    R[:, 0, 1] = sin_a
+    R[:, 1, 0] = -sin_a
+    R[:, 1, 1] = cos_a
+    R[:, 2, 2] = 1.0
+    return R
+
+
+def rotation_normalize(x: np.ndarray, cfg: NormalizeConfig = NormalizeConfig(),
+                        ref_frame: str = "first") -> np.ndarray:
+    """
+    Rotate every frame about the z-axis (yaw only) so the body's facing direction is canonical. z (height) is untouched, only x,y rotate.
+
+    ref_frame: "first" uses frame 0 to compute the rotation angle. 
+                "mean"  averages joint positions across all frames first (more stable if frame 0 is noisy / partially occluded).
+    x: (N, T, V, 3) -> returns same shape.
+    """
+    if ref_frame == "first":
+        ref = x[:, 0, :, :]                # (N, V, 3)
+    elif ref_frame == "mean":
+        ref = x.mean(axis=1)                # (N, V, 3)
+    else:
+        raise ValueError("ref_frame must be 'first' or 'mean'")
+
+    left_sh = ref[:, cfg.left_shoulder, :]
+    right_sh = ref[:, cfg.right_shoulder, :]
+    R = _yaw_rotation_matrix(left_sh, right_sh, cfg.eps)   # (N, 3, 3)
+
+    # Apply the same yaw rotation to every frame/joint of the sequence.
+    x_rot = np.einsum('nij,ntvj->ntvi', R, x)
+
+    return x_rot
+
+
+def normalize_skeleton_sequence(x: np.ndarray, cfg: NormalizeConfig = NormalizeConfig(), ref_frame: str = "first") -> np.ndarray:
+    """Full pipeline: center -> rotate (yaw only, about z) -> scale."""
+    x = center_skeleton(x, cfg)
+    x = rotation_normalize(x, cfg, ref_frame=ref_frame)
+    x = scale_normalize(x, cfg)
+    return x
+
+"""
+if __name__ == "__main__":
+    # quick smoke test
+    N, T, V = 4, 64, 25
+    dummy = np.random.randn(N, T, V, 3).astype(np.float32)
+    out = normalize_skeleton_sequence(dummy)
+    print("input shape :", dummy.shape)
+    print("output shape:", out.shape)
+    print("output mean/std:", out.mean(), out.std())
+
+    # sanity check: yaw rotation should not change z-coordinates at all
+    cfg = NormalizeConfig()
+    centered = center_skeleton(dummy, cfg)
+    rotated = rotation_normalize(centered, cfg)
+    z_diff = np.abs(centered[..., 2] - rotated[..., 2]).max()
+    print("max |z difference| after yaw rotation (should be ~0):", z_diff)
+"""
+
 
 def compute_svd(points):
     """
