@@ -26,9 +26,7 @@ def temporal_shift_view(sequence: torch.Tensor, center_idx: torch.Tensor, max_sh
 # --------------------------------------------------------------------------
 # 6. Example training loop
 # --------------------------------------------------------------------------
-
-def train_one_epoch(model: SwAVSkeletonModel, dataloader, optimizer, 
-                    augment: SkeletonAugment, device: str = "cuda",
+def train_one_epoch(model: SwAVSkeletonModel, dataloader, optimizer, augment: SkeletonAugment, device: str = "cuda",
                     freeze_prototypes_epoch: bool = False, log_every: int = 50,):
     model.train()
     running_loss = 0.0

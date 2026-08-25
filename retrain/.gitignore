@@ -6,6 +6,4 @@ outputs/
 config/
 summary/
 **.txt
-swav/others/
 swav/swav_output/
-**/.ipynb_checkpoints**/
