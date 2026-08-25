@@ -21,11 +21,12 @@ from trainers.utils import *
 #from models.skeletonMAE.util.pos_embed import interpolate_temp_embed
 #from models.MAE.util.misc import NativeScalerWithGradNormCount as NativeScaler
 
+from dataset.transform import NormalizeConfig, ViewInvariant
 from models.skeletonMAE.model.skeletonMAE import SkeletonMAE
 from dataset.mabe_mice import MABeMouseDataset
-from dataset.mocap import MocapDataset
+#from dataset.mocap import MocapDataset
 from dataset.sdannce import SdannceDataset
-from dataset.eyetrack import EyetrackDataset
+#from dataset.eyetrack import EyetrackDataset
 
 
 ### For cross validation ###
@@ -104,9 +105,10 @@ def get_args_parser():
     """Dataset augmentation and preprocessing"""
     parser.add_argument("--data_augment", default=False, type=str2bool)
     parser.add_argument("--view_invariant", default=True, type=str2bool)
+    
     parser.add_argument("--if_rotate_xz", default=False, type=str2bool)
-    parser.add_argument("--centeralign", default=False, type=str2bool)       # for mabe mice dataset
-    parser.add_argument("--include_testdata", action="store_true")  # for mabe mice dataset
+    parser.add_argument("--centeralign", default=False, type=str2bool)   # for mabe mice dataset
+    parser.add_argument("--include_testdata", action="store_true")       # for mabe mice dataset
 
     parser.add_argument("--num_workers", default=8, type=int)
     parser.add_argument("--pin_mem", action="store_true", help="Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.",)
@@ -227,6 +229,7 @@ def main(args):
             dataset_train = torch.utils.data.ConcatDataset([dataset_train, dataset_train_CLB])
         
     if args.dataset == "sdannce":
+        NormalizeConfig_sdannce = NormalizeConfig(left_shoulder=6, right_shoulder=9, left_hip=12, right_hip =15)
         dataset_train = SdannceDataset(mode = args.job, 
                                        path_to_data_dir=args.path_to_data_dir,
                                        sampling_rate=args.sampling_rate,
@@ -235,7 +238,8 @@ def main(args):
                                        interp_holes=args.interp_holes,
                                        augmentations=args.data_augment,
                                        view_invariant = args.view_invariant, 
-                                       index_frame = int(args.num_frames/2),
+                                       NormalizeConfig = NormalizeConfig_sdannce,
+                                       #index_frame = int(args.num_frames/2),
                                        model = "SkeletonMAE",
                                        split = None,
                                        if_val = False)
@@ -248,7 +252,7 @@ def main(args):
                                         interp_holes=args.interp_holes,
                                         augmentations=args.data_augment,
                                         view_invariant = args.view_invariant, 
-                                        index_frame = int(args.num_frames/2),
+                                        NormalizeConfig = NormalizeConfig_sdannce,
                                         model = "SkeletonMAE",
                                         split = fmr1_fold_1,
                                         if_val = True)
