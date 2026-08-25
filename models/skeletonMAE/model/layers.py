@@ -121,40 +121,32 @@ class Attention(nn.Module):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
-        # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
-        self.scale = head_dim ** -0.5 or qk_scale
+        self.scale = qk_scale or head_dim ** -0.5 # qk_scale, if given, overrides the default 1/sqrt(head_dim) 
 
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
-
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x, valid_mask=None, seqlen=1):
-        B, N, C = x.shape # [3B, 119, C]
+    def forward(self, x, valid_mask=None, seqlen=1): # x, valid_mask: (B, num_patches, C)
+        B, N, C = x.shape # [3B, N, C]
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)  (B, n_heads, N,  C // n_heads)
-    
-        if valid_mask is not None:
-            m = valid_mask[:, None, :, None].to(q.dtype)   
-            q = q * m
-            k = k * m
-            v = v * m
+        q, k, v = qkv[0], qkv[1], qkv[2]   # each (B, n_heads, N,  C // n_heads)
+        if valid_mask is not None: 
+            k = k * valid_mask[:, None, :, None].to(k.dtype)
         
-        B, _, N, C = q.shape                            # q,k,v [3B, 8, 119, 16] (num_heads=8, head_dim=16)
-        attn = (q @ k.transpose(-2, -1)) * self.scale  #[B, heads, N, N]
-        attn = attn.softmax(dim=-1) #attn.shape: [3B, num_heads, N]
-
+        attn = (q @ k.transpose(-2, -1)) * self.scale  # [B, n_heads, N, N]
+        attn = attn.softmax(dim=-1)                    # [B, n_heads, N, N]
         if valid_mask is not None:
             key_mask = valid_mask[:, None, None, :].to(attn.dtype)
             attn = attn * key_mask
             attn = attn / attn.sum(dim=-1, keepdim=True).clamp(min=1e-6)  # renormalize
 
         attn = self.attn_drop(attn) 
-        x = (attn @ v).transpose(1,2).reshape(B, N, C*self.num_heads) # [3B, N, 128]
-
+        x = (attn @ v).transpose(1,2).reshape(B, N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
+        
         return x
 
 

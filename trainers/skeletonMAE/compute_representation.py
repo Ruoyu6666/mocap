@@ -68,8 +68,8 @@ from models.skeletonMAE.util.pos_embed import interpolate_temp_embed
 
 from models.skeletonMAE.model.skeletonMAE import SkeletonMAE
 from models.skeletonMAE.model.encoder import STTFEncoder
-from dataset.mabe_mice import MABeMouseDataset
-from dataset.mocap import MocapDataset
+#from dataset.mabe_mice import MABeMouseDataset
+#sfrom dataset.mocap import MocapDataset
 from dataset.sdannce import SdannceDataset
 from dataset.eyetrack import EyetrackDataset
 
@@ -154,8 +154,7 @@ def compute_representations(model, data_loader, device, args):
     all_representations = []
     num_sequences = data_loader.dataset.num_sequences
     full_len = data_loader.dataset.seq_keypoints.shape[1] # length of the full sequence (after padding if applicable)
-    # eyetrack
-    # num_sequences, full_len = 120, 71
+    # num_sequences, full_len = 120, 71 # for eyetrack
     if args.fast_inference:
         with torch.no_grad():
             for i, (x, _)  in enumerate(tqdm(data_loader)):
@@ -183,7 +182,6 @@ def compute_representations(model, data_loader, device, args):
                     seq_id, start_idx = keypoints_id[j]
                     start_idx = int(start_idx/args.t_patch_size) # convert from frame index to index in the representation
                     sub_latent = latent[j]
-
                     #weighted_latent = sub_latent * taper_tensor
                     repr_sum[seq_id, start_idx:start_idx+latent_len]  += torch.from_numpy(sub_latent) # weighted_latent
                     count_sum[seq_id, start_idx:start_idx+latent_len] += 1                            # taper_tensor
@@ -220,7 +218,7 @@ if __name__ == "__main__":
                                        interp_holes=args.interp_holes,
                                        augmentations=args.data_augment,
                                        view_invariant = args.view_invariant, 
-                                       index_frame = int(args.num_frames/2),
+                                       #index_frame = int(args.num_frames/2),
                                        model = "SkeletonMAE",
                                        split = fmr1_fold_1,
                                        if_val = args.if_val)

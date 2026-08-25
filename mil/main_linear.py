@@ -49,8 +49,8 @@ parser.add_argument('--subseq_len', default=4500, type=int, help='the length of 
 
 args = parser.parse_args()
 if args.dataset == "sdannce":
-    Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/mae_sdannce_tr.npy", allow_pickle=True)
-    Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/mae_sdannce_val.npy", allow_pickle=True)
+    Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/50patch3/representations/mae_sdannce_tr.npy")[:, 25:4525]
+    Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/50patch3/representations/mae_sdannce_val.npy")[:, 25:4525]
     with open("/home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl", 'rb') as file:
         data = pickle.load(file)
     N = int(90000 / args.subseq_len) # number of sequences per sequence
@@ -134,7 +134,7 @@ print(X_test_reduced.shape)
 print(y_train.shape)
 print(y_test.shape)
 # ---- Step 2: Train simple regression model ----
-model = LogisticRegression(max_iter=1000, multi_class='multinomial')
+model = LogisticRegression(max_iter=500, multi_class='multinomial')
 
 model.fit(X_train_reduced, y_train)
 

@@ -1,8 +1,7 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
 
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
+# This source code is licensed under the license found in the LICENSE file in the root directory of this source tree.
 # --------------------------------------------------------
 # Position embedding utils
 # --------------------------------------------------------
@@ -130,7 +129,8 @@ def interpolate_temp_embed(model, checkpoint_model):
             pos_tokens = pos_embed_checkpoint
             pos_tokens = pos_tokens.permute(0, 3, 1, 2)
             pos_tokens = torch.nn.functional.interpolate(
-                pos_tokens, size=(t_grid_size_model, 1), mode='bicubic', align_corners=False)
+                pos_tokens, size=(t_grid_size_model, 1), mode='bicubic', align_corners=False
+                )
             pos_tokens = pos_tokens.permute(0, 2, 3, 1)
             pos_embed_model = pos_tokens
             checkpoint_model['temp_embed'] = pos_embed_model

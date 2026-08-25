@@ -24,17 +24,14 @@ class PrototypeLayer(nn.Module):
 
     @torch.no_grad()
     def init_from_centers(self, centers: torch.Tensor):
-        """
-        centers: (K, D) tensor, e.g. GMM means or watershed-region centroids computed on existing pretrained embeddings. 
-                 Gives the prototypes a behaviorally meaningful head start instead of random init.
-        """
+        """centers: (K, D) tensor, e.g. GMM means or other centroids computed on existing pretrained embeddings. 
+                    Gives the prototypes a behaviorally meaningful head start instead of random init."""
         assert centers.shape == self.prototypes.weight.shape, (f"expected {self.prototypes.weight.shape}, got {centers.shape}")
         centers = F.normalize(centers, dim=1, p=2)
         self.prototypes.weight.copy_(centers)
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
-        # z assumed already L2-normalized
-        return self.prototypes(z)
+        return self.prototypes(z)        # z assumed already L2-normalized
 
 
 

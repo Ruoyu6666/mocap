@@ -219,6 +219,17 @@ def main():
         X = raw_data["X"]
         #X = np.pad(X, ((0, 0), (0, 1), (0, 0)), mode='edge')
         y = raw_data["y"]
+
+    if "sdannce" in args.dataset:
+        fmr1_fold_1 = {"train":[402, 404, 405, 406, 407, 408], "valid": [401, 403]}
+        fmr1_fold_2 = {"train":[401, 403, 405, 406, 407, 408], "valid": [402, 404]}
+        fmr1_fold_3 = {"train":[401, 402, 403, 404, 407, 408], "valid": [405, 406]}
+        fmr1_fold_4 = {"train":[401, 402, 404, 405, 406, 407], "valid": [403, 408]}
+        if args.dataset == "sdannce":
+            pass
+        if args.dataset == "sdannce_kinematic":
+            pass
+
     
     num_classes = len(set(y.tolist()))
     args.num_classes = num_classes
@@ -234,7 +245,6 @@ def main():
 
     per_fold_metrics = []
     X_order = np.zeros((len(X), 71, args.feats_size), dtype=np.float32)
-
 
     for fold_idx, (train_index, test_index) in enumerate(skf.split(X, y)):
         Xtr, Xte = X[train_index], X[test_index]

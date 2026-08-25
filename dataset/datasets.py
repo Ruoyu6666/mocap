@@ -158,9 +158,7 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
         return np.divide(data - shift, scale)
 
     def unnormalize(self, data):
-        """
-        Undo normalize. Expects input data to be [sequence length, coordinates alternating between x and y]
-        """
+        """Undo normalize. Expects input data to be [sequence length, coordinates alternating between x and y]"""
         if torch.is_tensor(data):
             data = data.detach().cpu().numpy()
         state_dim = data.shape[1] // 2
