@@ -1,9 +1,0 @@
-**/__pycache__/**
-**/.ipynb_checkpoints**/
-kinematic/data/
-logs/
-outputs/
-config/
-summary/
-**.txt
-swav/swav_output/
