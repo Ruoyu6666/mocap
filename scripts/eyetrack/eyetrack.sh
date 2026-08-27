@@ -49,5 +49,5 @@ python trainers/skeletonMAE/compute_representation.py \
   --dataset eyetract
 
 
-python main.py --dataset eyetract --lr 0.0001 --batchsize 4 --embed 128 --weight_decay 0.0001 --if_extract_feature False
-python main.py --dataset eyetract --lr 0.0001 --batchsize 4 --feats_size 26 --embed 128 --weight_decay 0.0001
+python main_kfold.py --dataset eyetract --lr 0.0001 --batchsize 4 --embed 128 --if_extract_feature False
+python main.py --dataset eyetract --lr 0.0002 --batchsize 4 --feats_size 26 --embed 128 --weight_decay 0.0005
