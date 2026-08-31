@@ -1,6 +1,5 @@
 # This source code is licensed under the license found in the LICENSE file in the root directory of this source tree.
 # --------------------------------------------------------
-#
 # For more details on our work, please refer to: # Elucidating the Hierarchical Nature of Behavior with Masked Autoencoders
 # https://www.biorxiv.org/content/10.1101/2024.08.06.606796v1
 # --------------------------------------------------------
@@ -8,6 +7,8 @@
 import __future__
 import random
 import numpy as np
+
+
 
 # Some functions are adapted from TREBA
 # "TREBA" by Sun, Jennifer J and Kennedy, Ann and Zhan, Eric and Anderson, David J and Yue, Yisong and Perona, Pietro is licensed under CC BY-NC-SA 4.0 license.
@@ -50,10 +51,8 @@ class Rotation:
             np.random.uniform(low=-1 * self.rotation_range, high=self.rotation_range),
             rot_kpts.shape[1],
         )
-        R = np.array(
-            [[np.cos(mouse_rotation), -np.sin(mouse_rotation)],
-             [np.sin(mouse_rotation), np.cos(mouse_rotation)],]
-        ).transpose((2, 0, 1))
+        R = np.array([[np.cos(mouse_rotation), -np.sin(mouse_rotation)],
+                      [np.sin(mouse_rotation), np.cos(mouse_rotation)],]).transpose((2, 0, 1))
 
         # iterate over number of animals/individuals
         for i in range(len(rot_kpts)):
@@ -62,13 +61,9 @@ class Rotation:
             )
 
         # Check if possible for trajectory to fit within borders
-        bounded = (
-            (np.amax(rot_kpts[:, :, :, 0]) - np.amin(rot_kpts[:, :, :, 0]))
-            < self.grid_size[0]
-        ) and (
-            (np.amax(rot_kpts[:, :, :, 1]) - np.amin(rot_kpts[:, :, :, 1]))
-            < self.grid_size[1]
-        )
+        bounded = ((np.amax(rot_kpts[:, :, :, 0]) - np.amin(rot_kpts[:, :, :, 0])) < self.grid_size[0]
+                   ) and (
+                    (np.amax(rot_kpts[:, :, :, 1]) - np.amin(rot_kpts[:, :, :, 1])) < self.grid_size[1])
 
         if bounded:
             # Shift all points to within borders first

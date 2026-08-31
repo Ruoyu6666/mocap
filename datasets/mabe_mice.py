@@ -7,8 +7,8 @@ import numpy as np
 import torch
 from torchvision import transforms
 
-from .augmentations import GaussianNoise, Reflect, Rotation
-from .datasets import BasePoseTrajDataset
+from .augmentations_old import GaussianNoise, Reflect, Rotation
+from .dataset import BasePoseTrajDataset
 
 
 

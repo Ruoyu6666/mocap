@@ -1,19 +1,31 @@
 import __future__
 
+import os
 import pickle
 from pathlib import Path
+from typing import List
+from unittest import result
 import numpy as np
 import torch
 from torchvision import transforms
 
-from .transform import NormalizeConfig,  rotation_normalize, ViewInvariant
+from .transform import NormalizeConfig, _compute_root, center_skeleton, scale_normalize, _yaw_rotation_matrix, rotation_normalize, normalize_skeleton_sequence
+from .transform import ViewInvariant
 from .augmentations import GaussianNoise, Reflect, Rotation
 from .datasets import BasePoseTrajDataset
+"""
+head (Snout, EarL, EarR, SpineF), 
+trunk (SpineM, SpineL, TailBase, ShoulderL, ShoulderR, HipL, HipR), 
+forelimbs (ElbowL, WristL, HandL,ElbowR, WristR, HandR) 
+forelimbs (KneeL, AnkleL, FootL, KneeR, AnkleR, FootR)
+The size of each animal was estimated by sampling the distance between two virtual markers (the snout and the tail base)
 
-
-# Noramlize Config
-NormalizeConfig_sdannce = NormalizeConfig(left_shoulder=6, right_shoulder=9, left_hip=12, right_hip =15)
-
+NUM_KEYPOINTS = 23
+STR_BODY_PARTS = ["Snout", "EarL", "EarR",  "SpineF", "SpineM", "SpineL", "TailBase",
+                "ShoulderL", "ElbowL", "WristL", "HandL", "ShoulderR", "ElbowR", "WristR", "HandR", 
+                "HipL", "KneeL", "AnkleL", "FootL", "HipR", "KneeR", "AnkleR", "FootR",] 
+# https://github.com/tqxli/sdannce/blob/master/dannce/engine/skeletons/utils.py
+"""
 
 class SdannceDataset(BasePoseTrajDataset):
     NUM_KEYPOINTS = 18
@@ -29,31 +41,35 @@ class SdannceDataset(BasePoseTrajDataset):
     KEYFRAME_SHAPE = (NUM_INDIVIDUALS, NUM_KEYPOINTS, KPTS_DIMENSIONS)
     BODY_PART_2_INDEX = {w: i for i, w in enumerate(STR_BODY_PARTS)}
     
-    def __init__(self, 
-                mode: str, 
+    def __init__(self, mode: str, 
                 path_to_data_dir: Path,
                 sampling_rate: int = 1,
                 num_frames: int = 300,
                 sliding_window: int = 100,
                 interp_holes: bool = False,
-                view_invariant: bool = True,
-                augmentations: bool = False, 
-                NormalizeConfig: NormalizeConfig = NormalizeConfig_sdannce, 
+                augmentations: transforms.Compose = None,
+                view_invariant: bool = True, 
+                left_idx:     int = 12,  #15  default left hip
+                right_idx:    int = 15,  #19  default right hip
+                index_frame:  int = 149, 
+                normalizer:    str = 'normal',
                 model: str = "SkeletonMAE",
-                split: dict = None,     # Split dataset by mouse for train/val. No split if None
+                split: dict = None,     # whether to split dataset by mouse for train/val. No split if None
                 if_val: bool = False,   # When split not None: if False, load mouse for training, if true, load mouse for validation
                 **kwargs):
         
         super().__init__(path_to_data_dir, sampling_rate, num_frames, sliding_window, interp_holes, **kwargs)
         self.mode = mode
+        self.augmentations = augmentations
         
-        ### To be Done: first train on no aug, then on aug?
-        if augmentations:
-            self.augmentations = augmentations
-        ###################
         self.view_invariant = view_invariant
-        self.vi = ViewInvariant(index_frame = num_frames//2, left_idx = NormalizeConfig.left_hip, right_idx = NormalizeConfig.right_hip)
-        self.normalize_cfg = NormalizeConfig
+        self.vi  = ViewInvariant(index_frame = index_frame, left_idx = left_idx, right_idx = right_idx)
+        self.left_idx = left_idx
+        self.right_idx = right_idx
+        self.normalizer = normalizer
+        if augmentations:
+            self.augmentations = transforms.Compose([GaussianNoise(p=0.5),])
+        
         self.model = model
         self.split = split
         self.if_val = if_val
@@ -61,10 +77,10 @@ class SdannceDataset(BasePoseTrajDataset):
         self.load_data()
         self.preprocess()
 
-
     def load_data(self):
         with open(self.path, 'rb') as file:
             result = pickle.load(file)
+            # self.raw_data = pickle.load(file)
         L = self.SAMPLE_LEN
         N = int(90000 /self.SAMPLE_LEN) # number of sequences per huge sequence
         
@@ -72,8 +88,10 @@ class SdannceDataset(BasePoseTrajDataset):
             num_seq = len(result[mouse]["ratgen"])
             ratgen  = int(result[mouse]["ratgen"][0])
             result[mouse]["ratgen"] = np.full((num_seq * N,), ratgen)
+            result[mouse]["position"] = np.tile(np.arange(0, N), num_seq)
 
             result[mouse]["m1"] = np.array(result[mouse]["m1"])     # (3, 90000, 3, 23)
+            #print(result[mouse]["m1"].shape)
             result[mouse]["m1"] = result[mouse]["m1"].transpose(0, 1, 3, 2).reshape(-1, L, 23, 3)
             result[mouse]["m1"] = np.delete(result[mouse]["m1"], [5, 10, 14, 18, 22], axis=-2)
             
@@ -87,31 +105,36 @@ class SdannceDataset(BasePoseTrajDataset):
         
         self.raw_data = result
         del result
-
-
+        
     def preprocess(self):
         seq_keypoints = []
         keypoints_ids = []
         sub_seq_length = self.max_keypoints_len
-        half_len = sub_seq_length// 2
 
         num_sequences_total = 0
-        if self.split is not None: # only take train/test data
+        if self.split is not None:
             if self.if_val:
                 mice = self.split["valid"]
             else:
                 mice = self.split["train"]
         else: 
             mice = self.raw_data.keys() # if self.split is None, use data of all mice
-        for mouse_name in mice: # Iterate over mice
+        
+        for mouse_name in mice:
             sequences = self.raw_data[mouse_name]["m1"] #(num_sequences, 3600, 10, 3)
             num_sequences = len(sequences)
-            if True: #if self.mode == "pretrain":
-                for i in range(num_sequences_total, num_sequences_total + num_sequences): # Iterate over sequences of one mouse
+            #if self.mode == "pretrain":
+            if True:
+                for i in range(num_sequences_total, num_sequences_total + num_sequences):
                     vec_seq = sequences[i-num_sequences_total]
-                    pad_vec = np.pad(vec_seq, ((half_len, sub_seq_length - half_len), (0, 0), (0, 0)), mode="edge", ) # Pads the beginning and end of the sequence with duplicate frames
-                    #if self.view_invariant:     # Transformation on whole sequnece
-                    #pad_vec = rotation_normalize(pad_vec, self.normalize_cfg, ref_frame="first")
+                    # Pads the beginning and end of the sequence with duplicate frames
+                    pad_vec = np.pad(vec_seq, ((sub_seq_length// 2, sub_seq_length - sub_seq_length // 2), (0, 0), (0, 0)), mode="edge", )
+                    # View Transformation on whole sequnece
+                    if self.view_invariant:
+                        pad_vec, _, _  = self.vi(pad_vec, x_supp=(),)
+                    if self.normalizer == 'normal':
+                        pad_vec, _, _ = self.mocap_normalize(pad_vec)
+                    # For extracting subsequenes
                     seq_keypoints.append(pad_vec)
                     keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])
             """
@@ -126,7 +149,8 @@ class SdannceDataset(BasePoseTrajDataset):
         self.num_sequences = num_sequences_total
         self.seq_keypoints = np.array(seq_keypoints, dtype=np.float32) # numpy array: [num_sequences, T/5 + pad_vect, 10, 3]
         self.keypoints_ids = keypoints_ids
-        print("Total number of sequences",self.num_sequences, "Total number of subsequences",len(self.keypoints_ids))
+        print(self.num_sequences)
+        print(len(self.keypoints_ids))
 
         del self.raw_data
 
@@ -134,10 +158,13 @@ class SdannceDataset(BasePoseTrajDataset):
         seq = keypoints.reshape(-1, self.NUM_KEYPOINTS, 3)
         if self.interp_holes:
             seq = self.fill_holes(seq)
-        seq, _, _  = self.vi(seq, x_supp=(),)
-        seq, _, _ = self.mocap_normalize(seq)
+        """
+        if self.view_invariant:
+            seq, _, _  = self.vi(seq, x_supp=(),) # View Transformation on each sample
+        if self.normalizer == 'normal':
+            seq, _, _ = self.mocap_normalize(seq)
+        """
         seq = torch.tensor(seq, dtype=torch.float32)
-
         if self.model == "SkeletonMAE":
             seq = torch.unsqueeze(seq, dim = 1)
             seq = torch.nan_to_num(seq, nan = 0.0) # replace NaN with 0.0
@@ -149,15 +176,18 @@ class SdannceDataset(BasePoseTrajDataset):
         """
         Per-sample normalization to [-1, 1] independently per axis (X, Y, Z). Does NOT preserve aspect ratio — each axis uses its own min/max.
         Args:       x: (T, J, 3)
-        Returns:    x_norm: (T, J, 3) normalized to [-1, 1]; min_, max_: (3,) per-axis minimum (needed for untransform)
+        Returns:    x_norm:  (T, J, 3) normalized to [-1, 1]
+                    min_, max_:    (3,) per-axis minimum (needed for untransform)
         """
         min_ = np.nanmin(x, axis=(0, 1))              # (3,)
         max_ = np.nanmax(x, axis=(0, 1))              # (3,)
+
         if np.any(np.isnan(min_)) or np.any(np.isnan(max_)):
             print('[Normalize] Warning: NaN in min/max — sequence may be all-NaN.')
 
         range_     = max_ - min_                      # (3,)
         invalid_mask = np.isnan(range_) | (range_ < 1e-8)  # Identify invalid/flat axes (zero or NaN range)
+
         safe_range = np.where(invalid_mask, 1.0, range_) # Use np.where to prevent 0/0 or nan/nan division warnings    
         x_norm = 2 * (x - min_) / safe_range - 1
         x_norm[..., invalid_mask] = 0.0 # Zero out axes that were constant or all-NaN
