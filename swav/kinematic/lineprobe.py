@@ -73,7 +73,6 @@ class KinematicLoss(nn.Module):
         target_norm = self.normalize(target)                          # (B, L, F)
         per_elem = F.smooth_l1_loss(pred, target_norm, reduction="none")  # (B, L, F)
         per_feature_mean = per_elem.reshape(-1, per_elem.shape[-1]).mean(dim=0)  # (F,)
-
         if self.learn_weights:
             log_var = torch.clamp(self.log_var, -5.0, 5.0)
             precision = torch.exp(-log_var)

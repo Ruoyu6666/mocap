@@ -1,25 +1,78 @@
-
-import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import os
 import sys
 sys.path.append("/home/rguo_hpc/myfolder/mocap")
-from retrain.swav.layers import ProjectionHead, PrototypeLayer
-from retrain.swav.model import SwAVSkeletonModel
-from retrain.swav.utils import swav_loss, sample_binned_time_indices
+from datasets.augmentations import Augmentations, _resample_time
+from swav.finetune.model import SwAVSkeletonModel
+from swav.finetune.utils import swav_loss, sample_binned_time_indices
 
 
 
-def train_one_epoch_clip_binned(model: SwAVSkeletonModel,
-                                dataloader,
-                                optimizer,
-                                device: str = "cuda",
-                                n_bins: int = 5,
-                                min_sep: int = 4,
-                                freeze_prototypes_epoch: bool = False,
+
+def train_one_epoch_clip_augmented(model: SwAVSkeletonModel, dataloader, optimizer, augment: Augmentations, 
+                                   device, freeze_prototypes_epoch: bool = False, log_every: int = 50,):
+    """
+    SwAV training where the two views are two independently-augmented copies of the WHOLE clip, each run through the encoder separately
+ 
+    Every frame position is used as a positive pair between the two views (view_a vs view_b's embedding 
+    at frame t, for every t),  flattened into an effective batch of size B*T for the loss.
+    """
+    model.train()
+    running_loss = 0.0
+    for step, batch in enumerate(dataloader):
+        clip = batch[0] if isinstance(batch, (tuple, list)) else batch
+        clip = clip.to(device)      # (B, T, J, C)
+        B, T, _, _ = clip.shape
+        clip_a = clip
+        clip_b = clip.clone().cpu().numpy()  # will be augmented below
+        for i in range(B):
+            seq = clip_b[i]
+            seq = augment(seq)                             # spatial augmentations 
+            seq = _resample_time(seq[::5], target_len = T) # temporal downsampling then resamplings
+            clip_b[i] = dataloader.dataset.mocap_normalize(seq)[0] # normalize each clip 
+            clip_a[i] = torch.tensor(dataloader.dataset.mocap_normalize(clip_a[i].cpu().numpy())[0]) # normalize each clip
+        clip_b = torch.tensor(clip_b, dtype=torch.float32).to(device)
+        if model.mode == "freeze":
+            with torch.no_grad():
+                z_seq_a = model.encoder(clip_a)  # (B, T, D)
+                z_seq_b = model.encoder(clip_b)  # (B, T, D)
+        else:
+            z_seq_a = model.encoder(clip_a)
+            z_seq_b = model.encoder(clip_b)
+
+        z_a = z_seq_a.reshape(B * T, z_seq_a.shape[-1])  # (B*T, D)
+        z_b = z_seq_b.reshape(B * T, z_seq_b.shape[-1])  # (B*T, D)
+        p_a = model.projection_head(z_a) if model.projection_head is not None else z_a
+        p_b = model.projection_head(z_b) if model.projection_head is not None else z_b
+        p_a = F.normalize(p_a, dim=1, p=2)
+        p_b = F.normalize(p_b, dim=1, p=2)
+        scores_a = model.prototypes(p_a)
+        scores_b = model.prototypes(p_b)
+        loss = swav_loss(scores_a, scores_b)
+        optimizer.zero_grad()
+        loss.backward()
+
+        if freeze_prototypes_epoch:
+            for p in model.prototypes.parameters():
+                p.grad = None
+        optimizer.step()
+        model.prototypes.normalize_prototypes()
+ 
+        running_loss += loss.item()
+        if step % log_every == 0:
+            print(f"step {step:5d}  loss {loss.item():.4f}  (effective batch {B*T})")
+ 
+    return running_loss / max(1, len(dataloader))
+
+
+
+
+
+
+def train_one_epoch_clip_binned(model: SwAVSkeletonModel, dataloader, optimizer, device,
+                                n_bins: int = 5, min_sep: int = 4, freeze_prototypes_epoch: bool = False,
                                 log_every: int = 50,):
     """
     Variant of train_one_epoch_clip using sample_binned_time_indices: each clip contributes n_bins independent (view_a, view_b) pairs, 
@@ -31,7 +84,6 @@ def train_one_epoch_clip_binned(model: SwAVSkeletonModel,
     """
     model.train()
     running_loss = 0.0
- 
     for step, batch in enumerate(dataloader):
         clip = batch[0] if isinstance(batch, (tuple, list)) else batch
         clip = clip.to(device)  # (B, T, J, C)
@@ -61,10 +113,8 @@ def train_one_epoch_clip_binned(model: SwAVSkeletonModel,
         scores_b = model.prototypes(p_b)
  
         loss = swav_loss(scores_a, scores_b)
- 
         optimizer.zero_grad()
         loss.backward()
- 
         if freeze_prototypes_epoch:
             for p in model.prototypes.parameters():
                 p.grad = None
@@ -106,7 +156,6 @@ def train_one_epoch_clip(model: SwAVSkeletonModel, dataloader, optimizer, device
     for step, (clip, center_idx) in enumerate(dataloader):
         clip = clip.to(device)               # (B, T, J, C)
         center_idx = center_idx.to(device)   # (B,)
- 
         if model.mode == "freeze":
             with torch.no_grad():
                 z_seq = model.encoder(clip)  # (B, T, D)
@@ -129,14 +178,12 @@ def train_one_epoch_clip(model: SwAVSkeletonModel, dataloader, optimizer, device
         scores_b = model.prototypes(p_b)
  
         loss = swav_loss(scores_a, scores_b)
- 
         optimizer.zero_grad()
         loss.backward()
  
         if freeze_prototypes_epoch:
             for p in model.prototypes.parameters():
                 p.grad = None
- 
         optimizer.step()
         model.prototypes.normalize_prototypes()
         running_loss += loss.item()
@@ -151,23 +198,18 @@ def train_one_epoch_clip(model: SwAVSkeletonModel, dataloader, optimizer, device
 # --------------------------------------------------------------------------
 # 6. Example training loop (single-frame-input encoder variant)
 # --------------------------------------------------------------------------
-def train_one_epoch(model: SwAVSkeletonModel,
-                    dataloader, optimizer, device: str ,
-                    max_shift: int = 2, min_sep: int = 1,
-                    freeze_prototypes_epoch: bool = False,
-                    log_every: int = 50,):
-    """
+#def train_one_epoch(model: SwAVSkeletonModel, dataloader, optimizer, device: str , max_shift: int=2, min_sep: int=1, 
+#                    freeze_prototypes_epoch: bool=False, log_every: int=50,):
+"""
     Expects each batch to be (sequence, center_idx):
       sequence:   (B, T, J, C) — a small temporal window around each anchor frame, T >= 2*max_shift + 1
-      center_idx: (B,) index of the anchor frame within each window (usually
-                  a constant, e.g. T // 2, unless your windows are ragged
-                  near sequence boundaries)
- 
+      center_idx: (B,) index of the anchor frame within each window (usually a constant, e.g. T // 2, unless 
+                your windows are ragged near sequence boundaries)
     No SkeletonAugment is applied — the two SwAV views are two distinct frames sampled from the window via sample_two_temporal_views.
-    """
+"""
+"""
     model.train()
-    running_loss = 0.0
- 
+    running_loss = 0.0 
     for step, (sequence, center_idx) in enumerate(dataloader):
         sequence = sequence.to(device)
         center_idx = center_idx.to(device)
@@ -175,8 +217,8 @@ def train_one_epoch(model: SwAVSkeletonModel,
         x_a, x_b = sample_two_temporal_views(sequence, center_idx, max_shift=max_shift, min_sep=min_sep)
         z_a, p_a, scores_a = model(x_a)
         z_b, p_b, scores_b = model(x_b)
+
         loss = swav_loss(scores_a, scores_b)
- 
         optimizer.zero_grad()
         loss.backward()
  
@@ -187,10 +229,10 @@ def train_one_epoch(model: SwAVSkeletonModel,
  
         optimizer.step()
         model.prototypes.normalize_prototypes()  # keep C on unit sphere
- 
         running_loss += loss.item()
         if step % log_every == 0:
             print(f"step {step:5d}  loss {loss.item():.4f}")
  
     return running_loss / max(1, len(dataloader))
+    """
  

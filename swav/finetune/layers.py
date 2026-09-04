@@ -53,21 +53,3 @@ class ProjectionHead(nn.Module):
  
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         return self.net(z)
-
-
-# --------------------------------------------------------------------------
-# 5. Wrapper module: encoder + prototypes
-# --------------------------------------------------------------------------
-"""
-class SwAVSkeletonModel(nn.Module):
-    def __init__(self, encoder: nn.Module, embed_dim: int, num_prototypes: int = 60):
-        super().__init__()
-        self.encoder = encoder  # your pretrained SkeletonMAE encoder
-        self.prototypes = PrototypeLayer(embed_dim, num_prototypes)
-
-    def forward(self, x: torch.Tensor):
-        z = self.encoder(x)              # (B, D)
-        z = F.normalize(z, dim=1, p=2)
-        scores = self.prototypes(z)      # (B, K)
-        return z, scores
-"""

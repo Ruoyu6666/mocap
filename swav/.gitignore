@@ -6,4 +6,5 @@ outputs/
 config/
 summary/
 **.txt
-swav/swav_output/
+finetune/swav_output/
+**.npy

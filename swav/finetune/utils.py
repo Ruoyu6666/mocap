@@ -1,4 +1,5 @@
 import math
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,13 +7,11 @@ import torch.nn.functional as F
 import os
 import sys
 sys.path.append("/home/rguo_hpc/myfolder/mocap")
-from retrain.swav.model import SwAVSkeletonModel
-
+from swav.finetune.model import SwAVSkeletonModel
 
 # --------------------------------------------------------------------------
 # 2. Sinkhorn-Knopp: turns raw scores into equipartitioned soft codes
 # --------------------------------------------------------------------------
- 
 @torch.no_grad()
 def sinkhorn(scores: torch.Tensor, eps: float = 0.05, n_iters: int = 3) -> torch.Tensor:
     """
@@ -23,7 +22,6 @@ def sinkhorn(scores: torch.Tensor, eps: float = 0.05, n_iters: int = 3) -> torch
     Q = torch.exp(scores / eps).T  # (K, B)
     B = Q.shape[1]
     K = Q.shape[0]
- 
     # normalize Q to be a valid transport plan
     sum_Q = Q.sum()
     Q /= sum_Q
@@ -46,7 +44,6 @@ def sinkhorn(scores: torch.Tensor, eps: float = 0.05, n_iters: int = 3) -> torch
 # --------------------------------------------------------------------------
 # 4. SwAV loss
 # --------------------------------------------------------------------------
- 
 def swav_loss(scores_a: torch.Tensor, scores_b: torch.Tensor,
               sinkhorn_eps: float = 0.05, sinkhorn_iters: int = 3,
               temperature: float = 0.1,) -> torch.Tensor:
@@ -71,16 +68,15 @@ def swav_loss(scores_a: torch.Tensor, scores_b: torch.Tensor,
 
 def compute_bin_ranges(T: int, n_bins: int):
     """
-    Splits [0, T) into n_bins contiguous, roughly-equal ranges.
-    E.g. T=50, n_bins=5 -> [(0,10), (10,20), (20,30), (30,40), (40,50)]
+    Splits [0, T) into n_bins contiguous, roughly-equal ranges e.g. T=50, n_bins=5 -> [(0,10), (10,20), (20,30), (30,40), (40,50)]
     """
     edges = torch.linspace(0, T, n_bins + 1).round().long()
     return [(int(edges[i]), int(edges[i + 1])) for i in range(n_bins)]
 
 
 
-def sample_binned_time_indices(B: int, T: int, n_bins: int = 5, n_views: int = 2,
-                               min_sep: int = 4, device: str = "cpu",):
+
+def sample_binned_time_indices(B: int, T: int, n_bins: int=5, n_views: int=2, min_sep: int = 4, device: str = "cpu",):
     """
     Returns:
       idx: (B, n_bins, n_views) long tensor of absolute time indices
@@ -118,11 +114,9 @@ def sample_binned_time_indices(B: int, T: int, n_bins: int = 5, n_views: int = 2
 
 
 
-
 # --------------------------------------------------------------------------
 # 7. Initializing prototypes from your existing GMM / watershed centers
 # --------------------------------------------------------------------------
-
 def init_prototypes_from_gmm(model: SwAVSkeletonModel, gmm_means, embed_normalize=True):
     """
     gmm_means: numpy array or tensor (K, D) — means of your existing GMM fit on pretrained SkeletonMAE embeddings. 
@@ -145,6 +139,76 @@ def build_optimizer(model: SwAVSkeletonModel, lr: float = 1e-4, weight_decay: fl
     return torch.optim.AdamW(trainable, lr=lr, weight_decay=weight_decay)
 
 
+@torch.no_grad()
+def compute_new_representations_overlapping(model, dataloader, device: str = "cuda",
+                                            which: str = "projection", t_patch_size: int = 1,):
+    """
+    Differences from your original code, both defensive fixes:
+      - no torch.squeeze() before indexing per-item latents — squeeze() would also collapse the batch dimension 
+        if the last batch happens to have batch_size 1, silently misindexing subsequent items.
+      - count_sum is clamped to a minimum of 1 before dividing, so any token position never covered by a window 
+        returns 0 instead of NaN (rather than propagating NaN through everything downstream).
+ 
+    Returns: (num_sequences, full_len // t_patch_size, D_out) tensor, or (..., K) if which='cluster'. 
+            Positions never covered by any window are 0 in the output — check the returned count_sum-derived coverage
+            yourself if you need to distinguish "0 embedding" from "uncovered".
+    """
+    assert which in ("projection", "raw", "cluster")
+    model.eval()
+    dataset = dataloader.dataset
+    num_sequences = dataset.num_sequences
+    full_len = dataset.seq_keypoints.shape[1]
+    T_tokens = full_len // t_patch_size
+    count_sum = torch.zeros(num_sequences, T_tokens, 1)
+    repr_sum = None  # allocated once we know D_out, from the first batch
+    
+    item_ptr = 0
+    for i, (x, _)  in enumerate(tqdm(dataloader)):
+        x = x.to(device)
+        B = x.shape[0]
+        z_seq = model.encoder(x)  # (B, latent_len, D)
+        latent_len = z_seq.shape[1]
+ 
+        if which == "raw":
+            out = z_seq
+        else:
+            flat = z_seq.reshape(-1, z_seq.shape[-1])
+            p = model.projection_head(flat) if model.projection_head is not None else flat
+            p = F.normalize(p, dim=1, p=2)
+
+            if which == "projection":
+                out = p.reshape(B, latent_len, -1)
+            else:  # cluster
+                scores = model.prototypes(p)
+                probs = F.softmax(scores / 0.1, dim=1)
+                out = probs.reshape(B, latent_len, -1)
+        out = out.cpu()
+
+        if repr_sum is None:
+            D_out = out.shape[-1]
+            repr_sum = torch.zeros(num_sequences, T_tokens, D_out)
+        keypoints_id_batch = dataset.keypoints_ids[item_ptr:item_ptr + B]
+        item_ptr += B
+        for j, (seq_id, start_idx) in enumerate(keypoints_id_batch):
+            start_token = int(start_idx / t_patch_size)
+            end_token = start_token + latent_len
+            repr_sum[seq_id, start_token:end_token] += out[j]
+            count_sum[seq_id, start_token:end_token] += 1
+ 
+    all_representations = repr_sum / count_sum.clamp(min=1)
+    return all_representations
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 @torch.no_grad()
@@ -159,8 +223,7 @@ def compute_new_representations_clip(model: SwAVSkeletonModel, dataloader, devic
       "cluster"    - return the (N, K) softmax-over-prototypes assignment instead of a D-dim embedding.
  
     frame_selection:
-      "all"    - return every frame in every clip (REQUIRED if the model was trained with the binned pairing scheme). 
-                Output has one row per (clip, frame) pair, flattened in clip-major order: clip 0's T frames, then clip 1's T frames, etc.
+      "all"    - return every frame in every clip (REQUIRED if the model was trained with the binned pairing scheme).
       "center" - one row per clip, taken at that clip's center_idx. Only valid if the dataloader yields (clip, center_idx) batches 
  
     return_indices: if True, also returns (clip_ids, frame_ids), each an (N,) long tensor giving which original clip / frame 
@@ -177,7 +240,7 @@ def compute_new_representations_clip(model: SwAVSkeletonModel, dataloader, devic
     clip_id_out, frame_id_out = [], []
     clip_counter = 0
  
-    for batch in dataloader:
+    for i, batch in enumerate(tqdm(dataloader)):
         if isinstance(batch, (tuple, list)):
             clip, center_idx = batch[0], (batch[1] if len(batch) > 1 else None)
         else:
@@ -205,14 +268,11 @@ def compute_new_representations_clip(model: SwAVSkeletonModel, dataloader, devic
                 frame_id_out.append(center_idx.cpu())
  
         clip_counter += B
-
         if which == "raw":
             out.append(z.cpu())
             continue
- 
         p = model.projection_head(z) if model.projection_head is not None else z
         p = F.normalize(p, dim=1, p=2)
- 
         if which == "projection":
             out.append(p.cpu())
         else:  # cluster
@@ -223,6 +283,7 @@ def compute_new_representations_clip(model: SwAVSkeletonModel, dataloader, devic
     result = torch.cat(out, dim=0)
     if return_indices:
         return result, torch.cat(clip_id_out), torch.cat(frame_id_out)
+
     return result
 
 
@@ -230,31 +291,20 @@ def compute_new_representations_clip(model: SwAVSkeletonModel, dataloader, devic
 
 
 
-
-
-
-
-
-
-
 """
-def sample_two_temporal_views(sequence: torch.Tensor, center_idx: torch.Tensor,
-                              max_shift: int = 2, min_sep: int = 1,):
+def sample_two_temporal_views(sequence: torch.Tensor, center_idx: torch.Tensor, max_shift: int = 2, min_sep: int = 1,):
 """    
 """    
-    No hand-crafted augmentation: both SwAV views are just two different frames drawn from a small temporal window around an anchor frame. 
+    No hand-crafted augmentation: both SwAV views are two different frames drawn from a small temporal window around an anchor frame. 
     This is the "temporal_shift_view, no augment" setup — positives are definedpurely by temporal proximity.
- 
     sequence: (B, T, J, C) — a window of frames per sample (T should be>= 2*max_shift + 1, 
                centered so center_idx +/- max_shift is in range for most samples)
     Returns: (view_a, view_b), each (B, J, C)
 """
-    
 """    
     B, T, J, C = sequence.shape
     device = sequence.device
-    assert 2 * max_shift + 1 >= min_sep + 1, ("max_shift too small for the requested min_sep — widen the window "
-                                              "or lower min_sep")
+    assert 2 * max_shift + 1 >= min_sep + 1, ("max_shift too small for the requested min_sep — widen the window or lower min_sep")
  
     offsets = torch.arange(-max_shift, max_shift + 1, device=device)  # (2*max_shift+1,)
     n_off = offsets.numel()
@@ -294,10 +344,8 @@ def sample_two_time_indices(center_idx: torch.Tensor, T: int, max_shift: int = 2
 
     device = center_idx.device
     B = center_idx.shape[0]
- 
     assert 2 * max_shift + 1 >= min_sep + 1, (
-        "max_shift too small for the requested min_sep — widen the window "
-        "or lower min_sep")
+        "max_shift too small for the requested min_sep — widen the window or lower min_sep")
  
     offsets = torch.arange(-max_shift, max_shift + 1, device=device)
     n_off = offsets.numel()
@@ -319,19 +367,14 @@ def sample_two_time_indices(center_idx: torch.Tensor, T: int, max_shift: int = 2
 """
 
 
-"""
-def sample_multiple_time_indices(center_idx: torch.Tensor, T: int, n_views: int = 2,
-                                 max_shift: int = 4, min_sep: int = 5,):
-"""
+#def sample_multiple_time_indices(center_idx: torch.Tensor, T: int, n_views: int = 2, max_shift: int = 4, min_sep: int = 5,):
 """ Generalization of sample_two_time_indices to n_views >= 2. Greedily picks offsets one at a time; 
-    each new offset must be >= min_sep away from every offset already chosen for that sample, 
-    so all pairs among the n_views end up at least min_sep apart. 
+    each new offset must be >= min_sep away from every offset already chosen for that sample,  
     
     center_idx: (B,) index of the anchor frame within each window
     max_shift: maximum frame offset from the anchor for either view
-    min_sep: minimum |offset_a - offset_b| enforced between the two sampled offsets, to avoid the degenerate case where 
-             both views land on the same frame (near-zero gradient, wasted step). Keep this >= 1. If your frame rate is 
-             high / motion is slow, consider raising it so the two views are actually visually distinct.
+    min_sep: minimum |offset_a - offset_b| enforced between the two sampled offsets, to avoid the degenerate case (near-zero gradient, 
+            wasted step). If your frame rate is  high / motion is slow, consider raising it so the two views are actually visually distinct.
     
     Returns idx_time: (B, n_views) long tensor of clamped time indices.
 """
@@ -360,3 +403,5 @@ def sample_multiple_time_indices(center_idx: torch.Tensor, T: int, n_views: int 
     idx_time = (center_idx.unsqueeze(1) + chosen_offsets).clamp(0, T - 1)
     return idx_time
 """
+
+
