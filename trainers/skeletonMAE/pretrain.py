@@ -21,12 +21,12 @@ from trainers.utils import *
 #from models.skeletonMAE.util.pos_embed import interpolate_temp_embed
 #from models.MAE.util.misc import NativeScalerWithGradNormCount as NativeScaler
 
-from dataset.transform import NormalizeConfig, ViewInvariant
+from datasets.transform import NormalizeConfig, ViewInvariant
 from models.skeletonMAE.model.skeletonMAE import SkeletonMAE
-from dataset.mabe_mice import MABeMouseDataset
-#from dataset.mocap import MocapDataset
-from dataset.sdannce import SdannceDataset
-#from dataset.eyetrack import EyetrackDataset
+#from datasets.mabe_mice import MABeMouseDataset
+#from datasets.mocap import MocapDataset
+from datasets.sdannce import SdannceDataset
+#from datasets.eyetrack import EyetrackDataset
 
 
 ### For cross validation ###
@@ -167,7 +167,6 @@ def test(model: torch.nn.Module, loader_test: Iterable, device: torch.device, lo
 
     model.eval()
     results = {'total_loss': 0}
-
     with torch.no_grad():
         for batch_idx, (x, _) in enumerate(tqdm(loader_test, total=len(loader_test))):
             x = x.to(device)
@@ -219,15 +218,16 @@ def main(args):
             loader_test = DataLoader(dataset_test, #sampler=sampler_test,
                                      batch_size=args.batch_size, num_workers=args.num_workers,
                                      pin_memory=args.pin_mem, drop_last=False,)
-        # True when training one model on both datasets CLB and FL2
-        if args.if_rotate_xz:
+
+        """
+        if args.if_rotate_xz:  # True when training one model on both datasets CLB and FL2
             dataset_train_CLB = MocapDataset(mode = args.job, path_to_data_dir="/home/rguo_hpc/myfolder/data/mocap/data_CLB.pkl", 
                                               datasets = ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"], sampling_rate=args.sampling_rate,
                                               num_frames=args.num_frames, sliding_window=args.sliding_window, interp_holes=args.interp_holes, 
                                               augmentations=args.data_augment, view_invariant = False, if_rotate_xz = True, 
                                         	  model = "SkeletonMAE", split=None, if_val=False)
             dataset_train = torch.utils.data.ConcatDataset([dataset_train, dataset_train_CLB])
-        
+        """
     if args.dataset == "sdannce":
         NormalizeConfig_sdannce = NormalizeConfig(left_shoulder=6, right_shoulder=9, left_hip=12, right_hip =15)
         dataset_train = SdannceDataset(mode = args.job, 
@@ -238,7 +238,6 @@ def main(args):
                                        interp_holes=args.interp_holes,
                                        augmentations=args.data_augment,
                                        view_invariant = args.view_invariant, 
-                                       NormalizeConfig = NormalizeConfig_sdannce,
                                        #index_frame = int(args.num_frames/2),
                                        model = "SkeletonMAE",
                                        split = None,

@@ -81,7 +81,6 @@ class SkeleEmbed(nn.Module):
 
         self.grid_size = num_joints // patch_size
         self.t_grid_size = num_frames // t_patch_size
-        self.num_patches = (self.grid_size * self.t_grid_size)
         kernel_size = [t_patch_size, patch_size] # temporal patch size 4, spatial patch size 1 (no spatial patching) 
         self.proj = nn.Conv2d(dim_in, dim_feat, kernel_size=kernel_size, stride=kernel_size)
 
@@ -150,6 +149,8 @@ class Attention(nn.Module):
         return x
 
 
+
+
 class Block(nn.Module):
 
     def __init__(self, dim, num_heads, mlp_ratio=4., mlp_out_ratio=1., qkv_bias=True, qk_scale=None, 
@@ -207,6 +208,7 @@ def drop_path(x, drop_prob: float = 0., training: bool = False):
     return output
 
 
+
 class DropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
     """
@@ -216,3 +218,17 @@ class DropPath(nn.Module):
 
     def forward(self, x):
         return drop_path(x, self.drop_prob, self.training)
+
+
+
+
+class TemporalUpsampler(nn.Module):
+    """[N, TP, C] -> [N, TP * t_patch_size, C]"""
+    def __init__(self, dim_feat, t_patch_size):
+        super().__init__()
+        self.deconv = nn.ConvTranspose1d(dim_feat, dim_feat, kernel_size=t_patch_size, stride=t_patch_size)
+
+    def forward(self, x):            # x: [N, TP, C]
+        x = x.transpose(1, 2)
+        x = self.deconv(x)           # [N, C, TP * t_patch_size]
+        return x.transpose(1, 2)     # [N, T, C]

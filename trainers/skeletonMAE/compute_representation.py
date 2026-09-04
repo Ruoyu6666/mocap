@@ -70,8 +70,8 @@ from models.skeletonMAE.model.skeletonMAE import SkeletonMAE
 from models.skeletonMAE.model.encoder import STTFEncoder
 #from dataset.mabe_mice import MABeMouseDataset
 #sfrom dataset.mocap import MocapDataset
-from dataset.sdannce import SdannceDataset
-from dataset.eyetrack import EyetrackDataset
+from datasets.sdannce import SdannceDataset
+from datasets.eyetrack import EyetrackDataset
 
 
 
@@ -104,10 +104,9 @@ def get_args_parser():
     parser.add_argument("--sampling_rate", default=1, type=int)
     parser.add_argument("--interp_holes", default=False, type=str2bool)
     parser.add_argument("--split", default=None, type=dict) 
-
-    """Dataset augmentation and preprocessing"""
-    parser.add_argument("--data_augment", default=False, type=str2bool)
     parser.add_argument("--view_invariant", default=True, type=str2bool)
+    parser.add_argument("--data_augment", default=False, type=str2bool)
+    parser.add_argument("--normalize", default=True, type=str2bool)
     parser.add_argument("--centeralign", action="store_true")       # for mabe mice dataset
     parser.add_argument("--include_testdata", action="store_true")  # for mabe mice dataset
 
@@ -153,8 +152,9 @@ def compute_representations(model, data_loader, device, args):
     model.eval()
     all_representations = []
     num_sequences = data_loader.dataset.num_sequences
-    full_len = data_loader.dataset.seq_keypoints.shape[1] # length of the full sequence (after padding if applicable)
+    full_len = data_loader.dataset.seq_keypoints.shape[1] # length of the full sequence
     # num_sequences, full_len = 120, 71 # for eyetrack
+    
     if args.fast_inference:
         with torch.no_grad():
             for i, (x, _)  in enumerate(tqdm(data_loader)):
@@ -186,7 +186,7 @@ def compute_representations(model, data_loader, device, args):
                     repr_sum[seq_id, start_idx:start_idx+latent_len]  += torch.from_numpy(sub_latent) # weighted_latent
                     count_sum[seq_id, start_idx:start_idx+latent_len] += 1                            # taper_tensor
 
-        all_representations = repr_sum / count_sum # (N, T, C)
+        all_representations = repr_sum / count_sum.clamp(min=1) # (N, T, C)
     if args.if_val:
         np.save(args.save_dir + '/representations/mae_'+ args.dataset +'_val.npy', all_representations)
     else:
@@ -211,17 +211,17 @@ if __name__ == "__main__":
                                         include_testdata=True,)
         elif args.dataset == "sdannce":
             dataset = SdannceDataset(mode = args.job, 
-                                       path_to_data_dir=args.path_to_data_dir,
+                                     path_to_data_dir=args.path_to_data_dir,
                                        sampling_rate=args.sampling_rate,
                                        num_frames=args.num_frames,
                                        sliding_window=args.sliding_window,
                                        interp_holes=args.interp_holes,
+                                       view_invariant = args.view_invariant,
                                        augmentations=args.data_augment,
-                                       view_invariant = args.view_invariant, 
-                                       #index_frame = int(args.num_frames/2),
+                                       normalize = args.normalize, 
                                        model = "SkeletonMAE",
                                        split = fmr1_fold_1,
-                                       if_val = args.if_val)
+                                       if_val = args.if_val)                
         elif args.dataset == "mocap":
             dataset = MocapDataset(mode = args.job,
                                 path_to_data_dir = args.path_to_data_dir,
@@ -235,7 +235,6 @@ if __name__ == "__main__":
                                 view_invariant = args.view_invariant, 
                                 left_idx = 3,       # default left hip
                                 right_idx = 8,      # default right hip
-                                index_frame = 149, 
                                 model = "SkeletonMAE",
                                 split = None, # whether to split dataset by mouse for train/val
                                 if_val = args.if_val,)

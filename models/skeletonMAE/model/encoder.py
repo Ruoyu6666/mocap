@@ -78,9 +78,10 @@ class STTFEncoder(nn.Module):
         elif protocol == 'finetune':
             self.head = ActionHeadFinetune(dropout_ratio=0.3, dim_feat=dim_feat, num_classes=num_classes)
         """
-        # maybe we can also add a protocol for linear probing with temporal pooling, 
-        # i.e., pool the features across time and joints and then apply a linear classifier. 
-        # This may be more effective for action recognition than the current linprobe protocol which applies linear classifier on each joint separately and then averages the predictions across joints. We can call this protocol 'linprobe_temporal_pooling' or something like that.
+        # maybe also add a protocol for linear probing with temporal pooling, i.e., pool the features across time and joints 
+        # and then apply a linear classifier. This may be more effective for action recognition than the current linprobe protocol 
+        # which applies linear classifier on each joint separately and then averages the predictions across joints. 
+        # We can call this protocol 'linprobe_temporal_pooling' or something like that.
         else:
             raise TypeError('Unrecognized evaluation protocol!')
         """
@@ -119,23 +120,20 @@ class STTFEncoder(nn.Module):
         patch_mask = data_mask.unfold(dimension=1, size=self.t_patch_size, step=self.t_patch_size)  # [B, 100, 10, t_patch_size]
         patch_mask = patch_mask.unfold(dimension=2, size=self.patch_size, step=self.patch_size)
         patch_mask = patch_mask.all(dim=-1).all(dim=-1) # [B, TP, VP]
-        self.valid_patch_mask = patch_mask.reshape(NM,  TP * VP)
-
+        #self.valid_patch_mask = patch_mask.reshape(NM,  TP * VP)
+        
         x = self.joints_embed(x)                                             # embed skeletons
         x = x + self.pos_embed[:, :, :VP, :] + self.temp_embed[:, :TP, :, :] # add pos & temp embed
         x = x.reshape(NM, TP * VP, -1)
 
         for idx, blk in enumerate(self.blocks):
-            x = blk(x, self.valid_patch_mask)              # apply Transformer blocks
+            x = blk(x) #, self.valid_patch_mask)              # apply Transformer blocks
         x = self.norm(x)
 
         if self.protocol == "compute_representations":
             x = x.reshape(NM, TP, VP, -1)                             # [NM, TP, VP, C]
             joint_mask = patch_mask.unsqueeze(-1).float()             # [NM, TP, VP, 1]
-
             x = (x * joint_mask).sum(dim=2) / joint_mask.sum(dim=2).clamp(min=1) # joint-level masked mean (over VP) [NM, TP, C]
-
-
             x = x.reshape(N, M, TP, -1).mean(dim=1)                       # [N, TP, C]
         else:
             x = x.reshape(N, M, TP, VP, -1)
