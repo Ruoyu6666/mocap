@@ -16,19 +16,19 @@ from typing import List, Tuple
 
 
 class Augmentations:
-    def __init__(self,
-                jitter_std: float = 0.02, jitter_p: float = 0.75,
-                rotation_range: float = np.pi, rotation_p: float = 0.75,
-                scale_range: Tuple[float, float] = (0.9, 1.1), scale_p: float = 0.5,
-                reflect_p: float = 0.75):
+    def __init__(self, jitter_std: float = 2, jitter_p: float = 0.5,
+                rotation_range: float = np.pi, rotation_p: float = 0.5,
+                reflect_p: float = 0.5,
+                scale_range: Tuple[float, float] = (0.9, 1.1), scale_p: float = 0.5,):
         
         self.jitter_std = jitter_std
         self.jitter_p = jitter_p
         self.rotation_range = rotation_range
         self.rotation_p = rotation_p
-        self.scale_range = scale_range
-        self.scale_p = scale_p
         self.reflect_p = reflect_p
+        #self.scale_range = scale_range
+        #self.scale_p = scale_p
+        
 
     # 1. add gaussian noise
     def random_jitter(self, clip: np.ndarray, std: float, p: float) -> np.ndarray:
@@ -38,7 +38,7 @@ class Augmentations:
         return clip + noise
 
     # 2. rotate
-    def random_rotate(self, keypoints: np.ndarray, p: float = 0.75, rotation_range: float = np.pi) -> np.ndarray:
+    def random_rotate(self, keypoints: np.ndarray, p: float = 0.5, rotation_range: float = np.pi) -> np.ndarray:
         """Randomly rotate a (T, J, 2/3) trajectory around its own centroid."""
         if np.random.random() > p:
             return keypoints
@@ -65,8 +65,9 @@ class Augmentations:
         new_points[..., 0] = points[..., 0] - 2 * A * D
         new_points[..., 1] = points[..., 1] - 2 * B * D
         return new_points
-    
-    def random_reflect(self, keypoints: np.ndarray, p: float = 0.75) -> np.ndarray:
+
+
+    def random_reflect(self, keypoints: np.ndarray, p: float = 0.5) -> np.ndarray:
         """Randomly reflect across a horizontal or vertical line through centroid."""
         if np.random.random() > p:
             return keypoints
@@ -74,7 +75,6 @@ class Augmentations:
         xy = new_keypoints[..., :2]
         center_x = np.mean(xy[..., 0])
         center_y = np.mean(xy[..., 1])
-
         if np.random.random() > 0.5:
             reflected_xy = self._reflect_points(xy, 0, 1, -center_y)
         else:
@@ -83,21 +83,22 @@ class Augmentations:
         return new_keypoints
 
 
+    def __call__(self, clip: np.ndarray) -> np.ndarray:
+            clip = self.random_jitter(clip, self.jitter_std, self.jitter_p)
+            clip = self.random_rotate(clip, self.rotation_p, self.rotation_range)
+            clip = self.random_reflect(clip, self.reflect_p)
+            #clip = self.random_scale(clip, self.scale_range, self.scale_p)
+    
+            return clip
+    """
     # 4. random scale
     def random_scale(self, clip: np.ndarray, scale_range: Tuple[float, float], p: float = 0.5) -> np.ndarray:
-        """Randomly scale a clip by a factor drawn from scale_range."""
+        #Randomly scale a clip by a factor drawn from scale_range
         if np.random.random() > p:
             return clip
         s = np.random.uniform(*scale_range)
         return clip * s
-
-
-    def __call__(self, clip: np.ndarray) -> np.ndarray:
-        clip = self.random_jitter(clip, self.jitter_std, self.jitter_p)
-        clip = self.random_rotate(clip, self.rotation_p, self.rotation_range)
-        clip = self.random_reflect(clip, self.reflect_p)
-        clip = self.random_scale(clip, self.scale_range, self.scale_p)
-        return clip
+    """
 
 
 
@@ -106,7 +107,10 @@ class Augmentations:
 ##### Temporal Aug.######
 #########################
 def _resample_time(clip: np.ndarray, target_len: int) -> np.ndarray:
-    """Linearly interpolate a clip along the time axis to target_len frames. Works for arbitrary T (including T < target_len upsampling)"""
+    """
+    Linearly interpolate a clip along the time axis to target_len frames. 
+    Works for arbitrary T (including T < target_len upsampling)
+    """
     T, V, C = clip.shape
     if T == target_len:
         return clip

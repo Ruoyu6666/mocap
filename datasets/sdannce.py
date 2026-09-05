@@ -7,7 +7,7 @@ import torch
 from torchvision import transforms
 
 from .transform import NormalizeConfig,  rotation_normalize, ViewInvariant
-from .augmentations import Augmentations
+from .augmentations import Augmentations, _resample_time
 from .dataset import BasePoseTrajDataset
 
 
@@ -28,6 +28,7 @@ class SdannceDataset(BasePoseTrajDataset):
     KPTS_DIMENSIONS = 3
     KEYFRAME_SHAPE = (NUM_INDIVIDUALS, NUM_KEYPOINTS, KPTS_DIMENSIONS)
     BODY_PART_2_INDEX = {w: i for i, w in enumerate(STR_BODY_PARTS)}
+    Normalize_Config = NormalizeConfig_sdannce
     
     def __init__(self, 
                 mode: str, 
@@ -38,24 +39,25 @@ class SdannceDataset(BasePoseTrajDataset):
                 interp_holes: bool = False,
                 view_invariant: bool = True,
                 augmentations: bool = False, 
-                NormalizeConfig: NormalizeConfig = NormalizeConfig_sdannce, 
+                normalize: bool = True, 
                 model: str = "SkeletonMAE",
                 split: dict = None,     # Split dataset by mouse for train/val. No split if None
                 if_val: bool = False,   # When split not None: if False, load mouse for training, if true, load mouse for validation
                 **kwargs):
         
         super().__init__(path_to_data_dir, sampling_rate, num_frames, sliding_window, interp_holes, **kwargs)
-        self.mode = mode
 
+        self.mode = mode
         self.view_invariant = view_invariant
-        self.vi = ViewInvariant(index_frame = num_frames//2, left_idx = NormalizeConfig.left_hip, right_idx = NormalizeConfig.right_hip)
+        if view_invariant:
+            self.vi = ViewInvariant(index_frame = num_frames//2, left_idx = self.Normalize_Config.left_hip, right_idx = self.Normalize_Config.right_hip)
         if augmentations:
             self.augmentations = Augmentations()
-        self.normalize_cfg = NormalizeConfig
+        self.normalize = normalize
+
         self.model = model
         self.split = split
         self.if_val = if_val
-
         self.load_data()
         self.preprocess()
 
@@ -104,16 +106,15 @@ class SdannceDataset(BasePoseTrajDataset):
         for mouse_name in mice: # Iterate over mice
             sequences = self.raw_data[mouse_name]["m1"] #(num_sequences, 3600, 10, 3)
             num_sequences = len(sequences)
-            if True: #if self.mode == "pretrain":
+            if True:
+            #if self.mode in ["pretrain"]: # padding
                 for i in range(num_sequences_total, num_sequences_total + num_sequences): # Iterate over sequences of one mouse
                     vec_seq = sequences[i-num_sequences_total]
                     pad_vec = np.pad(vec_seq, ((half_len, sub_seq_length - half_len), (0, 0), (0, 0)), mode="edge", ) # Pads the beginning and end of the sequence with duplicate frames
-                    #if self.view_invariant:     # Transformation on whole sequnece
-                        #pad_vec = rotation_normalize(pad_vec, self.normalize_cfg, ref_frame="first")
                     seq_keypoints.append(pad_vec)
                     keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])
             """
-            else: #self.mode in ["compute_representations","linprobe", "finetune"]:
+            elif self.mode in ["compute_representations", "linprobe", "finetune"]: # no paddiing
                 for i in range(num_sequences_total, num_sequences_total + num_sequences):
                     vec_seq = sequences[i-num_sequences_total]
                     seq_keypoints.append(vec_seq)
@@ -132,15 +133,16 @@ class SdannceDataset(BasePoseTrajDataset):
         seq = keypoints.reshape(-1, self.NUM_KEYPOINTS, 3)
         if self.interp_holes:
             seq = self.fill_holes(seq)
-        seq, _, _  = self.vi(seq, x_supp=(),)
-        if self.augmentations:
+        if self.view_invariant:         # View-invariant transformation
+            seq, _, _  = self.vi(seq, x_supp=(),)
+        if self.augmentations:          # Augmentations
             seq = self.augmentations(seq)
-        seq, _, _ = self.mocap_normalize(seq)
+            seq = seq[::5] 
+            seq =  _resample_time(seq, target_len=self.max_keypoints_len)
+        if self.normalize:              # Normalize
+            seq, _, _ = self.mocap_normalize(seq)
         seq = torch.tensor(seq, dtype=torch.float32)
-
-        if self.model == "SkeletonMAE":
-            seq = torch.unsqueeze(seq, dim = 1)
-            seq = torch.nan_to_num(seq, nan = 0.0) # replace NaN with 0.0
+        seq = torch.nan_to_num(seq, nan = 0.0) # replace NaN with 0.0
         return seq
     
     
@@ -186,7 +188,6 @@ class SdannceDataset(BasePoseTrajDataset):
     def prepare_subsequence_sample(self, sequence: np.ndarray):  # sequence (300, 23, 3)
         """Returns one training sample"""
         feats = self.featurise_keypoints(sequence) # [300, 1, 23, 3]
-        
         if self.model == "behaveMAE":
             feats = feats.reshape(self.max_keypoints_len, self.NUM_INDIVIDUALS, -1) # [300, num_ind, num_joints* 2d] flatten for behaveMAE
 

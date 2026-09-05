@@ -56,14 +56,12 @@ class MABeMouseDataset(BasePoseTrajDataset):
         **kwargs
     ):
 
-        super().__init__(
-            path_to_data_dir,
-            sampling_rate,
-            num_frames,
-            sliding_window,
-            fill_holes,
-            **kwargs
-        )
+        super().__init__(path_to_data_dir,
+                        sampling_rate,
+                        num_frames,
+                        sliding_window,
+                        fill_holes,
+                        **kwargs)
         
         self.mode = mode
         self.centeralign = centeralign
