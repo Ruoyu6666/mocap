@@ -7,3 +7,4 @@ config/
 summary/
 **.txt
 dataset/old/
+**/.ipynb_checkpoints/**

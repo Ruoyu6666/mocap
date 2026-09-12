@@ -49,32 +49,41 @@ parser.add_argument('--subseq_len', default=4500, type=int, help='the length of 
 
 args = parser.parse_args()
 if args.dataset == "sdannce":
-    Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/50patch3/representations/mae_sdannce_tr.npy")[:, 25:4525]
-    Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/50patch3/representations/mae_sdannce_val.npy")[:, 25:4525]
-    with open("/home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl", 'rb') as file:
-        data = pickle.load(file)
-    N = int(90000 / args.subseq_len) # number of sequences per sequence
-    label_tr = []
-    label_te = []
-    for mouse in fmr1_fold_1["train"]:
-        num_seq = len(data[mouse]["ratgen"])
-        gen  = str(data[mouse]["ratgen"][0])
-        label_tr = label_tr + [gen for i in range(num_seq * N)]
-    for mouse in fmr1_fold_1["valid"]:
-        num_seq = len(data[mouse]["ratgen"])
-        gen = str(data[mouse]["ratgen"][0])
-        label_te = label_te + [gen for i in range(num_seq * N)]
-    mapping = {s: i for i, s in enumerate(set(label_tr))}
-    print(f"Mapping of ratgen labels to integers: {mapping}")
-    ytr = [mapping[s] for s in label_tr]
-    yte = [mapping[s] for s in label_te]
-    y_train = np.array(ytr)
-    y_test = np.array(yte)
+    Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/fmr1/50/representations/mae_sdannce_tr.npy")[:, 25:4525]
+    Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/fmr1/50/representations/mae_sdannce_val.npy")[:, 25:4525]
+
+if args.dataset == "sdannce_kinematic":
+    Xtr = np.load("/home/rguo_hpc/myfolder/mocap/swav/kinematic/data/kinematic_tr.py.npy")
+    Xte = np.load("/home/rguo_hpc/myfolder/mocap/swav/kinematic/data/kinematic_val.py.npy")
+    Xtr = Xtr.reshape(-1, args.subseq_len, Xtr.shape[-1])
+    Xte = Xte.reshape(-1, args.subseq_len, Xtr.shape[-1])
+
+
+with open("/home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl", 'rb') as file:
+    data = pickle.load(file)
+N = int(90000 / args.subseq_len) # number of sequences per sequence
+label_tr = []
+label_te = []
+for mouse in fmr1_fold_1["train"]:
+    num_seq = len(data[mouse]["ratgen"])
+    gen  = str(data[mouse]["ratgen"][0])
+    label_tr = label_tr + [gen for i in range(num_seq * N)]
+for mouse in fmr1_fold_1["valid"]:
+    num_seq = len(data[mouse]["ratgen"])
+    gen = str(data[mouse]["ratgen"][0])
+    label_te = label_te + [gen for i in range(num_seq * N)]
+mapping = {s: i for i, s in enumerate(set(label_tr))}
+print(f"Mapping of ratgen labels to integers: {mapping}")
+ytr = [mapping[s] for s in label_tr]
+yte = [mapping[s] for s in label_te]
+y_train = np.array(ytr)
+y_test = np.array(yte)
 
 
 if args.dataset == "mocap":
     Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/CLB/mae_mocap_tr_f1.npy", allow_pickle=True)
     Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/CLB/mae_mocap_val_f1.npy", allow_pickle=True)
+
     with open("/home/rguo_hpc/myfolder/data/mocap/data_CLB.pkl", 'rb') as file:
         data = pickle.load(file)
     if args.label == "drug":
@@ -85,13 +94,12 @@ if args.dataset == "mocap":
                 drug_tr = drug_tr + data[dataset_name][mouse_name]["drug"]
             for mouse_name in mocap_fold_1[dataset_name]["valid"]:
                 drug_te = drug_te + data[dataset_name][mouse_name]["drug"]
-        
         mapping = {s: i for i, s in enumerate(set(drug_tr))}
         ytr = [mapping[s] for s in drug_tr]
         yte = [mapping[s] for s in drug_te]
         y_train = np.array(ytr)
         y_test = np.array(yte)
-                
+            
     if args.label == "experiment":
         expe_tr = []
         expe_te = []
@@ -100,7 +108,6 @@ if args.dataset == "mocap":
                 expe_tr = expe_tr + [dataset_name]* len(data[dataset_name][mouse_name]["drug"])
             for mouse_name in mocap_fold_1[dataset_name]["valid"]:
                 expe_te = expe_te + [dataset_name]* len(data[dataset_name][mouse_name]["drug"])
-            
             mapping = {s: i for i, s in enumerate(set(expe_tr))}
             print(mapping)
             ytr = [mapping[s] for s in expe_tr]
@@ -116,7 +123,6 @@ if args.dataset == "mocap":
                     type_tr = type_tr + data[dataset_name][mouse_name]["type"]
             for mouse_name in mocap_fold_1[dataset_name]["valid"]:
                     type_te = type_te + data[dataset_name][mouse_name]["type"]
-                
         mapping = {s: i for i, s in enumerate(set(type_tr))}
         print(mapping)
         ytr = [mapping[s] for s in type_tr]
@@ -133,8 +139,9 @@ print(X_train_reduced.shape)
 print(X_test_reduced.shape)
 print(y_train.shape)
 print(y_test.shape)
+
 # ---- Step 2: Train simple regression model ----
-model = LogisticRegression(max_iter=500, multi_class='multinomial')
+model = LogisticRegression(max_iter=500, solver='lbfgs', random_state=42)
 
 model.fit(X_train_reduced, y_train)
 

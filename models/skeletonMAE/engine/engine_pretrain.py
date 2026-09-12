@@ -53,9 +53,7 @@ def train_one_epoch(model: torch.nn.Module, data_loader: Iterable, optimizer: to
             optimizer.zero_grad()
 
         torch.cuda.synchronize()
-
         metric_logger.update(loss=loss_value)
-
         lr = optimizer.param_groups[0]["lr"]
         metric_logger.update(lr=lr)
 

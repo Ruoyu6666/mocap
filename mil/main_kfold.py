@@ -129,13 +129,13 @@ def main():
     parser.add_argument('--num_workers', default=4, type=int, help='number of workers used in dataloader [4]')
     parser.add_argument('--feats_size', default=512, type=int, help='Dimension of the feature size [512] resnet-50 1024')
     parser.add_argument('--lr', default=5e-4, type=float, help='1e-3 Initial learning rate [0.0002]')
-    parser.add_argument('--num_epochs', default=70, type=int, help='Number of total training epochs [40|200]')
+    parser.add_argument('--num_epochs', default=60, type=int, help='Number of total training epochs [40|200]')
     parser.add_argument('--gpu_index', type=int, nargs='+', default=(0,), help='GPU ID(s) [0]')
     parser.add_argument('--weight_decay', default=1e-4, type=float, help='Weight decay 1e-4]')
     parser.add_argument('--dropout_patch', default=0.5, type=float, help='Patch dropout rate [0] 0.5')
     parser.add_argument('--dropout_node', default=0.2, type=float, help='Bag classifier dropout rate [0]')
     parser.add_argument('--seed', default=42, type=int, help='random seed')
-   
+
     parser.add_argument('--optimizer', default='adamw', type=str, help='adamw sgd')
     parser.add_argument('--save_dir', default='./savemodel/', type=str, help='the directory used to save all the output')
     parser.add_argument('--epoch_des', default=5, type=int, help='turn on warmup')

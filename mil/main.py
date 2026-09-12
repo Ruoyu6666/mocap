@@ -280,14 +280,12 @@ def main():
             with open("/home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl", 'rb') as file:
                 data = pickle.load(file)
             N = int(90000 / args.subseq_len) # number of sequences per sequence
-
             if args.dataset == "sdannce":
-                Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/fmr1/250/representations/mae_sdannce_tr.npy")[:, 125:4625]
-                Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/fmr1/250/representations/mae_sdannce_val.npy")[:, 125:4625]
-
+                Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/50/representations/mae_sdannce_tr.npy")[:, 25:4525]
+                Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/50/representations/mae_sdannce_val.npy")[:, 25:4525]
             elif args.dataset == "sdannce_kinematic":
-                Xtr = np.load("/home/rguo_hpc/myfolder/mocap/retrain/kinematic/data/kinematic_tr.py.npy")
-                Xte = np.load("/home/rguo_hpc/myfolder/mocap/retrain/kinematic/data/kinematic_val.py.npy")
+                Xtr = np.load("/home/rguo_hpc/myfolder/mocap/swav/kinematic/data/kinematic_tr.py.npy")
+                Xte = np.load("/home/rguo_hpc/myfolder/mocap/swav/kinematic/data/kinematic_val.py.npy")
                 Xtr = Xtr.reshape(-1, args.subseq_len, Xtr.shape[-1])
                 Xte = Xte.reshape(-1, args.subseq_len, Xtr.shape[-1])
 
@@ -313,9 +311,8 @@ def main():
         print(Xtr.shape, Xte.shape, ytr.shape, yte.shape)
         trainset = TensorDataset(Xtr,ytr)
         testset = TensorDataset(Xte, yte)
-
         args.feats_size = Xtr.shape[-1]
-        #args.num_classes =  len(set(label_tr)))
+        args.num_classes =  len(set(label_tr))
         seq_len = Xtr.shape[1]
     """
     elif args.dataset in ["moseq","mabe_mouse_72"]:
