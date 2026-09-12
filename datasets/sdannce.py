@@ -67,7 +67,6 @@ class SdannceDataset(BasePoseTrajDataset):
             result = pickle.load(file)
         L = self.SAMPLE_LEN
         N = int(90000 /self.SAMPLE_LEN) # number of sequences per huge sequence
-        
         for mouse in result.keys(): # for each mouse
             num_seq = len(result[mouse]["ratgen"])
             ratgen  = int(result[mouse]["ratgen"][0])
@@ -106,20 +105,12 @@ class SdannceDataset(BasePoseTrajDataset):
         for mouse_name in mice: # Iterate over mice
             sequences = self.raw_data[mouse_name]["m1"] #(num_sequences, 3600, 10, 3)
             num_sequences = len(sequences)
-            if True:
-            #if self.mode in ["pretrain"]: # padding
+            if True: #if self.mode in ["pretrain"]: # padding
                 for i in range(num_sequences_total, num_sequences_total + num_sequences): # Iterate over sequences of one mouse
                     vec_seq = sequences[i-num_sequences_total]
                     pad_vec = np.pad(vec_seq, ((half_len, sub_seq_length - half_len), (0, 0), (0, 0)), mode="edge", ) # Pads the beginning and end of the sequence with duplicate frames
                     seq_keypoints.append(pad_vec)
                     keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])
-            """
-            elif self.mode in ["compute_representations", "linprobe", "finetune"]: # no paddiing
-                for i in range(num_sequences_total, num_sequences_total + num_sequences):
-                    vec_seq = sequences[i-num_sequences_total]
-                    seq_keypoints.append(vec_seq)
-                    keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(vec_seq), self.sliding_window)])
-            """
             num_sequences_total += num_sequences
         
         self.num_sequences = num_sequences_total
@@ -135,11 +126,10 @@ class SdannceDataset(BasePoseTrajDataset):
             seq = self.fill_holes(seq)
         if self.view_invariant:         # View-invariant transformation
             seq, _, _  = self.vi(seq, x_supp=(),)
-        if self.augmentations:          # Augmentations
+        if self.augmentations:       # Augment
+            #seq = _resample_time(seq[::5], target_len = self.max_keypoints_len) # temporal downsampling then resamplings
             seq = self.augmentations(seq)
-            seq = seq[::5] 
-            seq =  _resample_time(seq, target_len=self.max_keypoints_len)
-        if self.normalize:              # Normalize
+        if self.normalize:           # Normalize
             seq, _, _ = self.mocap_normalize(seq)
         seq = torch.tensor(seq, dtype=torch.float32)
         seq = torch.nan_to_num(seq, nan = 0.0) # replace NaN with 0.0
@@ -198,4 +188,4 @@ class SdannceDataset(BasePoseTrajDataset):
         subseq_ix = self.keypoints_ids[idx]
         subsequence = self.seq_keypoints[subseq_ix[0], subseq_ix[1] : subseq_ix[1] + self.max_keypoints_len]
         inputs = self.prepare_subsequence_sample(subsequence)
-        return inputs, []
+        return inputs, subseq_ix

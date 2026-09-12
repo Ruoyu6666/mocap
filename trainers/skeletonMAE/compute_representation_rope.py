@@ -1,0 +1,221 @@
+fmr1_fold_1 = {"train":[402, 404, 405, 406, 407, 408], "valid": [401, 403]}
+fmr1_fold_2 = {"train":[401, 403, 405, 406, 407, 408], "valid": [402, 404]}
+fmr1_fold_3 = {"train":[401, 402, 403, 404, 407, 408], "valid": [405, 406]}
+fmr1_fold_4 = {"train":[401, 402, 404, 405, 406, 407], "valid": [403, 408]}
+
+
+import os
+import sys
+sys.path.append(os.getcwd()) # Adds the current directory to the Python path
+
+import argparse
+import numpy as np
+from tqdm import tqdm
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+
+from trainers.utils import *
+from models.skeletonMAE.util import misc as misc
+from models.skeletonMAE.util.pos_embed import interpolate_temp_embed
+
+from models.skeletonMAE.model.encoder_rope import STTFEncoder
+from datasets.sdannce import SdannceDataset
+from datasets.eyetrack import EyetrackDataset
+
+
+
+def get_args_parser():
+    parser = argparse.ArgumentParser("STTF Training & Compute Representation", add_help=False)
+
+    """SkeletonMAE Model Hyperparameters"""
+    parser.add_argument('--dim_in', default=3, type=int, help='input dimension')
+    parser.add_argument('--dim_feat', default=192, type=int, help='feature dimension')
+    parser.add_argument('--depth', default=6, type=int, help='number of layers in the encoder')
+    parser.add_argument('--num_heads', default=8,  type=int, help='number of attention heads')
+    parser.add_argument('--mlp_ratio', default=4, type=int, help='ratio of mlp hidden dim to embedding dim')
+    parser.add_argument('--num_frames', default=300, type=int, help='number of frames in the input skeleton sequence')
+    parser.add_argument('--num_joints', default=10, type=int, help='number of joints in the input skeleton sequence')
+    parser.add_argument('--patch_size', default=1, type=int, help='spatial patch size (number of joints per patch)')
+    parser.add_argument('--t_patch_size', default=3, type=int, help='temporal patch size (number of frames per patch)')
+    parser.add_argument('--qkv_bias', action='store_true', help='if True, add a learnable bias to query, key, value')
+    parser.add_argument('--qk_scale', default=None, type=float, help='override default qk scale of head_dim ** -0.5 if set')
+    parser.add_argument('--drop_rate', default=0., type=float, help='dropout rate')
+    parser.add_argument('--attn_drop_rate', default=0., type=float, help='attention dropout rate')
+    parser.add_argument('--drop_path_rate', default=0., type=float, help='stochastic depth decay rate')
+    parser.add_argument('--rope_ratio', default=0.5, type=float)
+    parser.add_argument('--norm_layer', default=nn.LayerNorm, type=type, help='normalization layer')
+    parser.add_argument('--norm_skes_loss', action='store_true', help='if True, normalize skeletons before computing loss')
+    
+    
+    """Dataset and DataLoader parameters"""
+    parser.add_argument("--dataset",  type=str, default='mocap')
+    parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/data/mocap/data_FL2.pkl')
+    parser.add_argument("--sliding_window", default=60, type=int)
+    parser.add_argument("--sampling_rate", default=1, type=int)
+    parser.add_argument("--interp_holes", default=False, type=str2bool)
+    parser.add_argument("--split", default=None, type=dict) 
+    parser.add_argument("--view_invariant", default=True, type=str2bool)
+    parser.add_argument("--data_augment", default=False, type=str2bool)
+    parser.add_argument("--normalize", default=True, type=str2bool)
+    parser.add_argument("--centeralign", action="store_true")       # for mabe mice dataset
+    parser.add_argument("--include_testdata", action="store_true")  # for mabe mice dataset
+
+    parser.add_argument("--num_workers", default=8, type=int)
+    parser.add_argument("--pin_mem", action="store_true", help="Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.",)
+
+    """Training parameters"""
+    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--epochs", type=int, default=50)
+
+    """Saving and logging"""
+    parser.add_argument("--log_interval", type=int, default=100)
+    parser.add_argument("--save_dir", type=str, default="./outputs/") #  models, results, checkpoints
+    parser.add_argument("--model_path", type=str, default="/home/rguo_hpc/myfolder/mocap/outputs/checkpoints/FL2/whole_vi_checkpoint_30.pth")
+    
+    """Type of job"""
+    parser.add_argument("--if_val", type=str2bool, default=False) # whether to compute representations for validation set (if False, compute for training set)
+    parser.add_argument("--job", type=str, default="compute_representations", choices=["pretrain", "compute_representations","linprobe", "finetune"])
+    parser.add_argument("--fast_inference",default=False, type=str2bool)
+    return parser.parse_args()
+
+
+def make_taper_window(latent_len, edge_frac=0.25):
+    """
+    Hann-style taper: weight ~0 at edges, ~1 in the middle.
+    edge_frac controls how much of the window is ramp vs flat top.
+    """
+    ramp_len = max(1, int(latent_len * edge_frac))
+    window = torch.ones(latent_len)
+    ramp = 0.5 * (1 - torch.cos(torch.linspace(0, torch.pi, ramp_len)))
+    window[:ramp_len] = ramp
+    window[-ramp_len:] = ramp.flip(0)
+    return window  # shape (latent_len,)
+
+
+
+def compute_representations(model, data_loader, device, args):
+    os.makedirs(args.save_dir + '/representations', exist_ok=True)
+    model = model.to(device)
+    model.eval()
+    all_representations = []
+    num_sequences = data_loader.dataset.num_sequences
+    full_len = data_loader.dataset.seq_keypoints.shape[1] # length of the full sequence
+    
+    if args.fast_inference:
+        with torch.no_grad():
+            for i, (x, _)  in enumerate(tqdm(data_loader)):
+                x = x.to(device)
+                latent = model(x)      # (N, T, C)
+                all_representations.append(torch.squeeze(latent).cpu().numpy())
+                if (i + 1) % args.log_interval == 0:
+                    print(f"Processed {i+1}/{len(data_loader)} batches.")
+        all_representations = np.concatenate(all_representations, axis=0)
+        all_representations = all_representations.reshape(num_sequences, -1, args.dim_feat) # (N, T, C)
+    else:
+        repr_sum = torch.zeros(num_sequences, int(full_len/args.t_patch_size), args.dim_feat)
+        count_sum = torch.zeros(num_sequences, int(full_len/args.t_patch_size), 1)
+
+        with torch.no_grad():
+            for i, (x, _)  in enumerate(tqdm(data_loader)): # i, index of the batch; x, batch of subsequences;
+                x = x.to(device) # [B, 300, 1, 10, 3]
+                latent = model(x)
+                latent = torch.squeeze(latent).cpu().detach().numpy()
+                keypoints_id = data_loader.dataset.keypoints_ids[i*args.batch_size:(i+1)*args.batch_size] # list of tuples (seq_id, start_idx) for each subsequence in the batch
+                for j in range(len(keypoints_id)):
+                    seq_id, start_idx = keypoints_id[j]
+                    start_idx = int(start_idx/args.t_patch_size) # convert from frame index to index in the representation
+                    sub_latent = latent[j]
+                    repr_sum[seq_id, start_idx:start_idx+latent_len]  += torch.from_numpy(sub_latent) # weighted_latent
+                    count_sum[seq_id, start_idx:start_idx+latent_len] += 1                            # taper_tensor
+
+        all_representations = repr_sum / count_sum.clamp(min=1) # (N, T, C)
+    if args.if_val:
+        np.save(args.save_dir + '/representations/mae_'+ args.dataset +'_val.npy', all_representations)
+    else:
+        np.save(args.save_dir + '/representations/mae_'+ args.dataset +'_tr.npy', all_representations)
+
+
+
+if __name__ == "__main__":
+
+    timestamp = readable_timestamp()
+    args = get_args_parser()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if args.job == "compute_representations":
+        """Set up data set and data loader"""
+        if args.dataset == "mabe_mice":
+            dataset = MABeMouseDataset(path_to_data_dir=args.path_to_data_dir,
+                                        sampling_rate=args.sampling_rate,
+                                        num_frames=args.num_frames, 
+                                        sliding_window=args.num_frames-1,
+                                        if_fill=args.fill_holes,
+                                        augmentations=None,
+                                        include_testdata=True,)
+        elif args.dataset == "sdannce":
+            dataset = SdannceDataset(mode = args.job, 
+                                     path_to_data_dir=args.path_to_data_dir,
+                                     sampling_rate=args.sampling_rate,
+                                     num_frames=args.num_frames,
+                                     sliding_window=args.sliding_window,
+                                     interp_holes=args.interp_holes,
+                                     view_invariant = args.view_invariant,
+                                     augmentations=args.data_augment,
+                                     normalize = args.normalize, 
+                                     model = "SkeletonMAE",
+                                     split = fmr1_fold_1,
+                                     if_val = args.if_val)                
+        elif args.dataset == "mocap":
+            dataset = MocapDataset(mode = args.job,
+                                path_to_data_dir = args.path_to_data_dir,
+                                datasets = ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"],
+                                #task = args.task , # FL2 or Tr
+                                sampling_rate=args.sampling_rate,
+                                num_frames=args.num_frames,
+                                sliding_window=args.num_frames if args.fast_inference else args.sliding_window,
+                                interp_holes=args.interp_holes,
+                                augmentations=args.data_augment,
+                                view_invariant = args.view_invariant,
+                                model = "SkeletonMAE",
+                                split = None, # whether to split dataset by mouse for train/val
+                                if_val = args.if_val,)
+        elif args.dataset == "eyetract":
+            dataset = EyetrackDataset(path_to_data_dir=args.path_to_data_dir, num_frames = args.num_frames)
+
+        loader = DataLoader(dataset, #sampler=sampler_test, 
+                            batch_size=args.batch_size, 
+                            num_workers=args.num_workers, pin_memory=args.pin_mem, drop_last=False,)
+
+
+        # Set up encoder-only model for compute representation
+        model = STTFEncoder(dim_in=args.dim_in,
+                            num_classes=2, 
+                            dim_feat=args.dim_feat, 
+                            depth=args.depth, 
+                            num_heads=args.num_heads,
+                            mlp_ratio=args.mlp_ratio,  
+                            num_frames=args.num_frames,
+                            num_joints=args.num_joints,
+                            patch_size=args.patch_size,
+                            t_patch_size=args.t_patch_size,
+                            qkv_bias=args.qkv_bias,
+                            qk_scale=args.qk_scale,
+                            drop_rate=args.drop_rate,
+                            attn_drop_rate=args.attn_drop_rate,
+                            rope_ratio=args.rope_ratio,
+                            drop_path_rate=args.drop_path_rate, 
+                            norm_layer=args.norm_layer, 
+                            protocol="compute_representations")
+        
+        checkpoint_model = torch.load(args.model_path, map_location=device, weights_only=False)["model"]
+        print("Load pre-trained model from: %s" % args.model_path)
+
+        #interpolate_temp_embed(model, checkpoint_model)
+
+        # load pre-trained model
+        model.load_state_dict(checkpoint_model, strict=False)
+        latent_len = int(args.num_frames/args.t_patch_size)
+        compute_representations(model, loader, device, args)
+    
