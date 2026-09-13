@@ -13,9 +13,8 @@ sys.path.append("/home/rguo_hpc/myfolder/mocap")
 from datasets.augmentations import Augmentations, _resample_time
 from datasets.sdannce import SdannceDataset
 
-from swav.finetune.layers import ProjectionHead, PrototypeLayer
+from swav.finetune.layers import ProjectionHead
 from swav.finetune.model import SwAVSkeletonModel
-from swav.finetune.dataset import ClipDataset
 from swav.finetune.utils import build_optimizer, compute_new_representations_overlapping, init_prototypes_from_gmm
 from swav.finetune.engine import train_one_epoch_clip_augmented, train_one_epoch_clip_binned
 
@@ -44,6 +43,7 @@ def build_encoder(args) -> nn.Module:
         drop_path_rate=args.drop_path_rate,
         protocol=args.protocol,
         dataset=args.dataset,
+        rope_ratio=1
     )
     encoder = encoder_cls(**kwargs)
     if not args.compute_representations:
@@ -99,7 +99,7 @@ def build_argparser():
     p.add_argument("--unfreeze_n", type=int, default=2, help="only used when --mode finetune_last_n")
     p.add_argument("--encoder_blocks_attr", type=str, default="blocks", help="attribute name on your encoder holding its transformer block list")
     p.add_argument("--proj_hidden_dim", type=int, default=256)
-    p.add_argument("--proj_out_dim", type=int, default=None) # 192
+    p.add_argument("--proj_out_dim", type=int, default=None)
     p.add_argument("--gmm_means_path", type=str, default=None, help="optional .npy path (K, D) to warm-start prototypes from existing GMM cluster centers")
 
     # SwAV training
@@ -115,7 +115,7 @@ def build_argparser():
     p.add_argument("--batch_size", type=int, default=64)
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--weight_decay", type=float, default=5e-4)
-    p.add_argument("--num_workers", type=int, default=4)
+    p.add_argument("--num_workers", type=int, default=8)
     p.add_argument("--seed", type=int, default=0)
 
     # misc
@@ -126,7 +126,7 @@ def build_argparser():
     p.add_argument("--compute_representations", action="store_true", help="after training, run compute_new_representations_clip " \
                                                 "over the full dataset (unshuffled) and save the result to output_dir")
     p.add_argument("--checkpoint_path", type=str, default=None,)
-    p.add_argument("--representation_which", type=str, default="cluster",choices=["projection", "raw", "cluster"])
+    p.add_argument("--representation_which", type=str, default="raw", choices=["projection", "raw", "cluster"])
 
     return p
 
@@ -136,42 +136,39 @@ def build_argparser():
 def main(args):
     torch.manual_seed(args.seed)
     os.makedirs(args.output_dir, exist_ok=True)
-
     # Dataset + Dataloader
-    #dataset = ClipDataset(args.clips_path, args.center_idx_path)
     dataset= SdannceDataset(mode = "finetune", path_to_data_dir=args.path_to_data_dir,
                             sampling_rate=args.sampling_rate,
                             num_frames=args.num_frames, sliding_window=args.sliding_window,
-                            view_invariant = True, augmentations=False, normalize=False,
+                            view_invariant = True, augmentations=False, normalize=False, # augment and normalize later
                             split = None, if_val = False)
-    
     dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=args.num_workers,)
 
     # Encoder + Model
     encoder = build_encoder(args)
     projection_head = None
     if args.proj_out_dim is not None:
-        print("projection_head not None")
         projection_head = ProjectionHead(in_dim=args.dim_feat, hidden_dim=args.proj_hidden_dim, out_dim=args.proj_out_dim)
     model = SwAVSkeletonModel(encoder, args.dim_feat, args.num_prototypes, mode=args.mode, 
                               unfreeze_n=args.unfreeze_n, encoder_blocks_attr=args.encoder_blocks_attr, 
                               projection_head=projection_head,).to(args.device)
     print("mode, ", model.mode)
 
+    
     if args.compute_representations:
         fmr1_fold_1 = {"train":[402, 404, 405, 406, 407, 408], "valid": [401, 403]}
-        dataset_train= SdannceDataset(mode = "pretrain", path_to_data_dir=args.path_to_data_dir,
-                                    sampling_rate=args.sampling_rate,
-                                    num_frames=args.num_frames, sliding_window=5,
-                                    view_invariant = True, augmentations=False, normalize=True,
-                                    split = fmr1_fold_1, if_val = False)
+        fmr1_fold_2 = {"train":[401, 403, 405, 406, 407, 408], "valid": [402, 404]}
+        fmr1_fold_3 = {"train":[401, 402, 403, 404, 407, 408], "valid": [405, 406]}
+        fmr1_fold_4 = {"train":[401, 402, 404, 405, 406, 407], "valid": [403, 408]}
+
+        dataset_train= SdannceDataset(mode = "pretrain", path_to_data_dir=args.path_to_data_dir,sampling_rate=args.sampling_rate,
+                                    num_frames=args.num_frames, sliding_window=int(args.sliding_window/5), view_invariant = True, 
+                                    augmentations=False, normalize=True, split = fmr1_fold_1, if_val = False)
         dataloader_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=False, drop_last=False, num_workers=args.num_workers,)
         
-        dataset_valid= SdannceDataset(mode = "pretrain", path_to_data_dir=args.path_to_data_dir,
-                                    sampling_rate=args.sampling_rate,
-                                    num_frames=args.num_frames, sliding_window=5,
-                                    view_invariant = True, augmentations=False, normalize=True,
-                                    split = fmr1_fold_1, if_val = True)
+        dataset_valid= SdannceDataset(mode = "pretrain", path_to_data_dir=args.path_to_data_dir, sampling_rate=args.sampling_rate, 
+                                    num_frames=args.num_frames, sliding_window=int(args.sliding_window/5), view_invariant = True, 
+                                    augmentations=False, normalize=True, split = fmr1_fold_1, if_val = True)
         dataloader_valid = DataLoader(dataset_valid, batch_size=args.batch_size, shuffle=False, drop_last=False, num_workers=args.num_workers,)
         
         print("load from " + args.checkpoint_path )
@@ -180,40 +177,46 @@ def main(args):
         model = model.to(args.device)
 
         print(f"computing final representations (which='{args.representation_which}')")
-        new_repr_tr = compute_new_representations_overlapping(model, dataloader_train, args.device, 
-                                                              args.representation_which, args.t_patch_size)
+        new_repr_tr = compute_new_representations_overlapping(model, dataloader_train, args.device, args.representation_which, args.t_patch_size)
         repr_path_tr = os.path.join(args.output_dir, "new_representations_train.npy")
         np.save(repr_path_tr, new_repr_tr.numpy())
         
-        new_repr_val = compute_new_representations_overlapping(model, dataloader_valid, args.device, 
-                                                               args.representation_which, args.t_patch_size)
+        new_repr_val = compute_new_representations_overlapping(model, dataloader_valid, args.device, args.representation_which, args.t_patch_size)
         repr_path_val = os.path.join(args.output_dir, "new_representations_valid.npy")
         np.save(repr_path_val, new_repr_val.numpy())
+
     else:
+        if args.checkpoint_path is not None:
+            print("load from " + args.checkpoint_path )
+            ckpt = torch.load(args.checkpoint_path, map_location="cpu", weights_only=False)
+            model.load_state_dict(ckpt["model_state_dict"])
+            model = model.to(args.device)
+            start_epoch = ckpt["epoch"]
+        else:
+            start_epoch = 0
+
         if args.gmm_means_path:
             gmm_means = np.load(args.gmm_means_path)
             init_prototypes_from_gmm(model, gmm_means)
             print(f"Warm-started prototypes from {args.gmm_means_path}")
-
         # Optimizer
         optimizer = build_optimizer(model, lr=args.lr, weight_decay=args.weight_decay)
-
+        # Log
         log_path = os.path.join(args.output_dir, "loss_log.csv")
         with open(log_path, "w") as f:
             f.write("epoch, avg_loss\n")
-        for epoch in range(args.epochs):
+        
+        for epoch in range(start_epoch, args.epochs):
             freeze_prototypes = (epoch == 0)  # standard SwAV convention
             if args.pairing_mode == "binned":
                 avg_loss = train_one_epoch_clip_binned(
                     model, dataloader, optimizer, device=args.device, n_bins=args.n_bins, 
                     min_sep=args.min_sep, freeze_prototypes_epoch=freeze_prototypes, log_every=args.log_every,)
-                
             elif args.pairing_mode == "augment":
                 augment = Augmentations()
                 avg_loss = train_one_epoch_clip_augmented(
                     model, dataloader, optimizer, augment, device=args.device,
                     freeze_prototypes_epoch=freeze_prototypes, log_every=args.log_every,)
-            
             #else:
             #    avg_loss = train_one_epoch_clip(model, dataloader, optimizer, device=args.device,
             #        n_views=args.n_views, max_shift=args.max_shift, min_sep=args.min_sep,
@@ -225,7 +228,7 @@ def main(args):
 
             if (epoch + 1) % args.save_every == 0 or epoch == args.epochs - 1:
                 ckpt_path = os.path.join(args.output_dir, f"checkpoint_epoch_{epoch+1}.pt")
-                torch.save({"epoch": epoch,
+                torch.save({"epoch": epoch + 1,
                             "model_state_dict": model.state_dict(),
                             "optimizer_state_dict": optimizer.state_dict(),
                             "args": vars(args),}, ckpt_path)

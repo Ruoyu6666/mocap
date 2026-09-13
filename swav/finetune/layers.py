@@ -50,6 +50,30 @@ class ProjectionHead(nn.Module):
         self.net = nn.Sequential(nn.Linear(in_dim, hidden_dim),
                                  nn.GELU(),
                                  nn.Linear(hidden_dim, out_dim),)
+    def forward(self, z: torch.Tensor) -> torch.Tensor:
+        return self.net(z)
+
+
+
+
+class ClassifierHead(nn.Module):
+    """
+    Frame-level classification head, attached directly to the encoder's raw per-frame/token output z_seq (B, T, D) — 
+    NOT the SwAV projection head's output, since the projection head is specifically shaped for the SwAV cluster space, 
+    whereas classification should use the encoder's own (richer, higher-dim) features. Produces per-frame logits 
+    (B, T, num_classes); combine with F.cross_entropy(..., ignore_index=...) for partial/sparse labeling.
+    """
+ 
+    def __init__(self, in_dim: int, num_classes: int, hidden_dim: int = None):
+        super().__init__()
+        if hidden_dim:
+            self.net = nn.Sequential(
+                nn.Linear(in_dim, hidden_dim),
+                nn.GELU(),
+                nn.Linear(hidden_dim, num_classes),
+            )
+        else:
+            self.net = nn.Linear(in_dim, num_classes)
  
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         return self.net(z)

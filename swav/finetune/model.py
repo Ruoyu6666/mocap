@@ -29,7 +29,8 @@ class SwAVSkeletonModel(nn.Module):
                  mode: str = "finetune", 
                  unfreeze_n: int = 2, 
                  encoder_blocks_attr: str = "blocks", 
-                 projection_head: nn.Module = None,):
+                 projection_head: nn.Module = None,
+                 classifier_head: nn.Module = None,):
         super().__init__()
         assert mode in ("finetune", "freeze", "finetune_last_n")
         self.mode = mode

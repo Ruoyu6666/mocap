@@ -103,14 +103,13 @@ class SdannceDataset(BasePoseTrajDataset):
         else: 
             mice = self.raw_data.keys() # if self.split is None, use data of all mice
         for mouse_name in mice: # Iterate over mice
-            sequences = self.raw_data[mouse_name]["m1"] #(num_sequences, 3600, 10, 3)
+            sequences = self.raw_data[mouse_name]["m1"] #(num_sequences, L, 10, 3)
             num_sequences = len(sequences)
-            if True: #if self.mode in ["pretrain"]: # padding
-                for i in range(num_sequences_total, num_sequences_total + num_sequences): # Iterate over sequences of one mouse
-                    vec_seq = sequences[i-num_sequences_total]
-                    pad_vec = np.pad(vec_seq, ((half_len, sub_seq_length - half_len), (0, 0), (0, 0)), mode="edge", ) # Pads the beginning and end of the sequence with duplicate frames
-                    seq_keypoints.append(pad_vec)
-                    keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])
+            for i in range(num_sequences_total, num_sequences_total + num_sequences): # Iterate over sequences of one mouse
+                vec_seq = sequences[i-num_sequences_total]
+                pad_vec = np.pad(vec_seq, ((half_len, sub_seq_length - half_len), (0, 0), (0, 0)), mode="edge", ) # Pads the beginning and end of the sequence with duplicate frames
+                seq_keypoints.append(pad_vec)
+                keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])
             num_sequences_total += num_sequences
         
         self.num_sequences = num_sequences_total

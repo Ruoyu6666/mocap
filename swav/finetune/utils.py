@@ -1,4 +1,4 @@
-import math
+import numpy as np
 from tqdm import tqdm
 import torch
 import torch.nn as nn
@@ -139,9 +139,10 @@ def build_optimizer(model: SwAVSkeletonModel, lr: float = 1e-4, weight_decay: fl
     return torch.optim.AdamW(trainable, lr=lr, weight_decay=weight_decay)
 
 
+
 @torch.no_grad()
 def compute_new_representations_overlapping(model, dataloader, device: str = "cuda",
-                                            which: str = "projection", t_patch_size: int = 1,):
+                                which: str = "projection", t_patch_size: int = 1,):
     """
     Differences from your original code, both defensive fixes:
       - no torch.squeeze() before indexing per-item latents — squeeze() would also collapse the batch dimension 
@@ -161,7 +162,6 @@ def compute_new_representations_overlapping(model, dataloader, device: str = "cu
     T_tokens = full_len // t_patch_size
     count_sum = torch.zeros(num_sequences, T_tokens, 1)
     repr_sum = None  # allocated once we know D_out, from the first batch
-    
     item_ptr = 0
     for i, (x, _)  in enumerate(tqdm(dataloader)):
         x = x.to(device)
@@ -178,7 +178,7 @@ def compute_new_representations_overlapping(model, dataloader, device: str = "cu
 
             if which == "projection":
                 out = p.reshape(B, latent_len, -1)
-            else:  # cluster
+            elif which == "cluster":
                 scores = model.prototypes(p)
                 probs = F.softmax(scores / 0.1, dim=1)
                 out = probs.reshape(B, latent_len, -1)
@@ -200,7 +200,75 @@ def compute_new_representations_overlapping(model, dataloader, device: str = "cu
 
 
 
+def swav_loss_multiview(
+    scores_list,
+    sinkhorn_eps: float = 0.05,
+    sinkhorn_iters: int = 3,
+    temperature: float = 0.1,
+):
+    """
+    Generalization of swav_loss to V >= 2 views. Every ordered pair of
+    distinct views (v, v') contributes a swapped-prediction term: view v's
+    predicted distribution should match view v''s Sinkhorn code. Averaged
+    over all V*(V-1) ordered pairs. For V=2 this is numerically identical to
+    swav_loss.
+ 
+    scores_list: list of V tensors, each (B, K) raw prototype logits.
+    """
+    V = len(scores_list)
+    assert V >= 2, "need at least 2 views"
+ 
+    with torch.no_grad():
+        codes = [sinkhorn(s, eps=sinkhorn_eps, n_iters=sinkhorn_iters) for s in scores_list]
+    log_probs = [F.log_softmax(s / temperature, dim=1) for s in scores_list]
+    total = 0.0
+    count = 0
+    for v in range(V):
+        for vp in range(V):
+            if v == vp:
+                continue
+            total = total + (codes[vp] * log_probs[v]).sum(dim=1).mean()
+            count += 1
+ 
+    return -total / count
 
+
+
+
+def pool_sequence(z_seq: torch.Tensor, method: str = "mean") -> torch.Tensor:
+    """
+    Pools a per-frame embedding sequence (B, T, D) down to one clip-level
+    embedding (B, D).
+      "mean": average over time — smooth, standard choice.
+      "max":  max over time — emphasizes the most salient frame per channel.
+    """
+    if method == "mean":
+        return z_seq.mean(dim=1)
+    elif method == "max":
+        return z_seq.max(dim=1).values
+    else:
+        raise ValueError(f"unknown pool method '{method}', expected 'mean' or 'max'")
+
+
+
+
+def align_labels_to_tokens(labels: torch.Tensor, T_tokens: int) -> torch.Tensor:
+    """
+    labels: (B, T_raw) integer frame-level class labels (use e.g. -100 for
+    unlabeled frames, matching F.cross_entropy's default ignore_index).
+ 
+    If the encoder temporally patches frames (e.g. t_patch_size > 1), its output T_tokens < T_raw, 
+    so labels need to be downsampled to match. Uses an np.linspace nearest-frame scheme, so token t's label 
+    comes from the same raw frame a same-length clip-subsampling view would have picked for that position.
+ 
+    Returns (B, T_tokens).
+    """
+    B, T_raw = labels.shape
+    if T_tokens == T_raw:
+        return labels
+    idx = np.linspace(0, T_raw - 1, T_tokens).round().astype(int)
+    idx_t = torch.as_tensor(idx, device=labels.device, dtype=torch.long)
+    return labels[:, idx_t]
 
 
 
@@ -275,7 +343,7 @@ def compute_new_representations_clip(model: SwAVSkeletonModel, dataloader, devic
         p = F.normalize(p, dim=1, p=2)
         if which == "projection":
             out.append(p.cpu())
-        else:  # cluster
+        elif which == "cluster":
             scores = model.prototypes(p)
             probs = F.softmax(scores / 0.1, dim=1)
             out.append(probs.cpu())

@@ -148,7 +148,6 @@ def train_one_epoch(model: torch.nn.Module, loader_train: Iterable, optimizer: t
         loss, pred, mask = model(x, mask_ratio=args.mask_ratio)
         loss.backward()
         optimizer.step()
-
         results["total_loss"]  += loss.item()
         
         if (batch_idx + 1) % args.log_interval == 0:
@@ -237,8 +236,7 @@ def main(args):
                                        sliding_window=args.sliding_window,
                                        interp_holes=args.interp_holes,
                                        augmentations=args.data_augment,
-                                       view_invariant = args.view_invariant, 
-                                       #index_frame = int(args.num_frames/2),
+                                       view_invariant = args.view_invariant,
                                        model = "SkeletonMAE",
                                        split = None,
                                        if_val = False)
@@ -251,7 +249,6 @@ def main(args):
                                         interp_holes=args.interp_holes,
                                         augmentations=args.data_augment,
                                         view_invariant = args.view_invariant, 
-                                        NormalizeConfig = NormalizeConfig_sdannce,
                                         model = "SkeletonMAE",
                                         split = fmr1_fold_1,
                                         if_val = True)
@@ -320,7 +317,7 @@ def main(args):
                         'optimizer': optimizer.state_dict(),}, checkpoint_path)
             print(f"Checkpoint saved at {checkpoint_path}")
     save_model(model, optimizer, args)
-    print(f"Model saved at {args.save_dir}/models/")
+    print(f"Model saved at {args.save_dir}models/")
 
 
 if __name__ == "__main__":
