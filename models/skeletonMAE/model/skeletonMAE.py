@@ -124,7 +124,6 @@ class SkeletonMAE(nn.Module):
         mask[:, :len_keep] = 0
         mask = torch.gather(mask, dim=1, index=ids_restore)     # unshuffle → [N, T*V]
         #print("mask", mask.sum(), mask.numel(), mask.sum()/mask.numel())
-
         return x_masked, mask, ids_restore, ids_keep
     
     
@@ -133,7 +132,7 @@ class SkeletonMAE(nn.Module):
         TP = self.joints_embed.t_grid_size
         VP = self.joints_embed.grid_size
         """
-        data_mask  = (x != 0.0).all(dim=-1)                       # [B, T, J] -> True: 3 coordinates all exist
+        data_mask  = (x != 0.0).all(dim=-1)      s# [B, T, J] -> True: 3 coordinates all exist
         patch_mask = data_mask.unfold(dimension=1, size=self.t_patch_size, step=self.t_patch_size)  # [B, TP, V, t_patch_size]
         patch_mask = patch_mask.unfold(dimension=2, size=self.patch_size, step=self.patch_size)     
         patch_mask = patch_mask.all(dim=-1).all(dim=-1) # [B, TP, VP]
@@ -143,7 +142,6 @@ class SkeletonMAE(nn.Module):
         x = x + self.pos_embed[:, :, :VP, :] + self.temp_embed[:, :TP, :, :]  # add pos & temp embed
         x = x.reshape(NM, TP * VP, -1)                               # x: [NM, 1200, 128]
         x, mask, ids_restore, _ = self.random_masking(x)             # masking: length -> length * mask_ratio:  [96, 119, 128], mask: [96, 1200]
-
         for idx, blk in enumerate(self.blocks):                      # apply Transformer blocks
             x = blk(x)
         x = self.norm(x)                                             # [NM, TP * VP * R, 128]

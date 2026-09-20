@@ -8,7 +8,6 @@ from .layers import trunc_normal_
 from .layers_rope import SkeleEmbed, RotaryTemporalEmbedding, Block
 
 
-
 class SkeletonMAE(nn.Module):
     def __init__(self, dim_in=3, dim_feat=256, decoder_dim_feat=256, depth=5, decoder_depth=5, 
                  num_heads=8, mlp_ratio=4, num_frames=120, num_joints=25, patch_size=1, t_patch_size=3,
@@ -93,17 +92,24 @@ class SkeletonMAE(nn.Module):
                 start = torch.randint(block_start, max_start + 1, (1,)).item()
                 frame_mask[b, start:start + this_seg_len] = True
         frame_mask_token = frame_mask.unsqueeze(-1).expand(N, TP, VP).reshape(N, L)  # [N, T*V]
-
+        """
+        # 2. NO joint-level masking. Need a per-token ordering to compact the surviving tokens and later restore them in-place
+        noise = torch.rand(N, L, device=device)
+        noise[frame_mask_token] += 2.0  # guarantees masked tokens sort after kept ones
+        ids_shuffle = torch.argsort(noise, dim=1)             # [N, T*V]
+        ids_restore = torch.argsort(ids_shuffle, dim=1)
+        num_keep_per_sample = (~frame_mask_token).sum(dim=1)  # [N], varies slightly with overlap 
+        """
         # 2. JOINT-LEVEL masking
         joint_noise = torch.rand(N, L, device=device)
         force_remove = frame_mask_token.bool()
         joint_noise[force_remove] = 2.0 + joint_noise[force_remove]      # push out of [0,1]
         ids_shuffle = torch.argsort(joint_noise, dim=1)     # [N, T*V]
         ids_restore = torch.argsort(ids_shuffle, dim=1)
-
         num_valid_surviving = (~force_remove).sum(dim=1)    # [N] tokens survive both masks
         num_keep_per_sample = (num_valid_surviving.float() * (1 - joint_mask_ratio)).int()  # per-sample
-        len_keep = max(num_keep_per_sample.min().item(), 1)
+        
+        len_keep = max(num_keep_per_sample.max().item(), 1)
         ids_keep = ids_shuffle[:, :len_keep]                # Keep tokens: [N, len_keep]
         x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).expand(N, len_keep, D))
 
@@ -111,11 +117,11 @@ class SkeletonMAE(nn.Module):
         mask = torch.ones(N, L, device=device)
         mask[:, :len_keep] = 0       # 0 = keep (valid, not reconstructed), 1 = reconstruct
         mask = torch.gather(mask, dim=1, index=ids_restore) # unshuffle → [N, T*V]
+        #print("mask", mask.sum(), mask.numel(), mask.sum()/mask.numel())
         return x_masked, mask, ids_restore, ids_keep
     
     
-    def forward_encoder(self, x, downsample_rate=None, 
-                        segment_mask_ratio=0.5, seg_len=5, joint_mask_ratio=0.5): # x: [NM, T, V, C]
+    def forward_encoder(self, x, downsample_rate=None, segment_mask_ratio=0.5, seg_len=5, joint_mask_ratio=0.5): # x: [NM, T, V, C]
         NM = x.shape[0]
         x = self.joints_embed(x)
         TP, VP = x.shape[1], x.shape[2]
@@ -130,7 +136,7 @@ class SkeletonMAE(nn.Module):
         effective_stride = self.t_patch_size * downsample_rate  # [NM]
         t_idx_full = torch.arange(TP, device=x.device).unsqueeze(0) * effective_stride.unsqueeze(1)  # [NM, TP], real-time units
         t_idx_full = t_idx_full.unsqueeze(-1).expand(NM, TP, VP).reshape(NM, TP * VP)  
-        t_idx = torch.gather(t_idx_full, dim=1, index=ids_keep)              # [NM, N_kept]
+        t_idx = torch.gather(t_idx_full, dim=1, index=ids_keep)  # [NM, N_kept]
         cos, sin = self.rope(t_idx)
 
         for blk in self.blocks:

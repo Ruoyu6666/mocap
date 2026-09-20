@@ -8,3 +8,4 @@ summary/
 **.txt
 finetune/swav_output/
 **.npy
+joint/pretrain_output

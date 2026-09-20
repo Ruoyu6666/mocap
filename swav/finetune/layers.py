@@ -25,7 +25,7 @@ class PrototypeLayer(nn.Module):
     @torch.no_grad()
     def init_from_centers(self, centers: torch.Tensor):
         """centers: (K, D) tensor, e.g. GMM means or other centroids computed on existing pretrained embeddings. 
-                    Gives the prototypes a behaviorally meaningful head start instead of random init."""
+                Gives the prototypes a behaviorally meaningful head start instead of random init."""
         assert centers.shape == self.prototypes.weight.shape, (f"expected {self.prototypes.weight.shape}, got {centers.shape}")
         centers = F.normalize(centers, dim=1, p=2)
         self.prototypes.weight.copy_(centers)
@@ -44,7 +44,6 @@ class ProjectionHead(nn.Module):
     Its output is a legitimate new frame representation — you choose out_dim — even though the backbone was never touched. 
     Use head(z) (L2-normalized) as your new per-frame embedding instead of, or alongside, the raw frozen z.
     """
- 
     def __init__(self, in_dim: int, hidden_dim: int = 256, out_dim: int = 128):
         super().__init__()
         self.net = nn.Sequential(nn.Linear(in_dim, hidden_dim),
@@ -64,16 +63,12 @@ class ClassifierHead(nn.Module):
     (B, T, num_classes); combine with F.cross_entropy(..., ignore_index=...) for partial/sparse labeling.
     """
  
-    def __init__(self, in_dim: int, num_classes: int, hidden_dim: int = None):
+    def __init__(self, in_dim: int, num_classes: int, hidden_dim: int):
         super().__init__()
-        if hidden_dim:
-            self.net = nn.Sequential(
+        self.net = nn.Sequential(
                 nn.Linear(in_dim, hidden_dim),
                 nn.GELU(),
                 nn.Linear(hidden_dim, num_classes),
             )
-        else:
-            self.net = nn.Linear(in_dim, num_classes)
- 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         return self.net(z)

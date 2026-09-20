@@ -6,16 +6,16 @@ from .layers_rope import SkeleEmbed, Block, RotaryTemporalEmbedding
 
 
 class STTFEncoder(nn.Module):
-    def __init__(self, dim_in=3, num_classes=3, dim_feat=256, depth=5, num_heads=8, 
-                 mlp_ratio=4, num_frames=120, num_joints=25, patch_size=1, t_patch_size=3,
-                 qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0., 
-                 rope_ratio=0., drop_path_rate=0., norm_layer=nn.LayerNorm, 
-                 protocol='compute_representations', dataset="mocap"):
+    def __init__(self, dim_in=3, num_classes=3, dim_feat=256, depth=5, 
+                num_heads=8, mlp_ratio=4, num_frames=120, num_joints=25, patch_size=1, t_patch_size=3,
+                qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0., rope_ratio=0.5, 
+                drop_path_rate=0., norm_layer=nn.LayerNorm, 
+                protocol='compute_representations', dataset="mocap"):
         super().__init__()
-
         self.num_classes = num_classes
+
         self.dim_feat = dim_feat
-        self.num_frames = num_frames # reference/config only, no longer constrains forward
+        self.num_frames = num_frames    # reference/config only, no longer constrains forward
         self.num_joints = num_joints
         self.patch_size = patch_size
         self.t_patch_size = t_patch_size
@@ -24,14 +24,15 @@ class STTFEncoder(nn.Module):
         self.pos_drop = nn.Dropout(p=drop_rate)
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
         self.blocks = nn.ModuleList([
-            Block(dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, 
-                  qkv_bias=qkv_bias, qk_scale=qk_scale, drop=drop_rate, 
-                  attn_drop=attn_drop_rate, rope_ratio=rope_ratio, drop_path=dpr[i], 
-                  norm_layer=norm_layer) 
-                for i in range(depth)])
+            Block(
+                dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, 
+                qk_scale=qk_scale, drop=drop_rate, attn_drop=attn_drop_rate, rope_ratio=rope_ratio, 
+                drop_path=dpr[i], norm_layer=norm_layer) 
+            for i in range(depth)])
         self.norm = norm_layer(dim_feat)
+
         # maybe also add a protocol for linear probing with temporal pooling, i.e., pool the features across time and joints 
-        # and then apply a linear classifier. This may be more effective for action recognition than the current linprobe protocol 
+        # and then apply a linear classifier. This may be more effective for action recognition than the linprobe protocol 
         # which applies linear classifier on each joint separately and then averages the predictions across joints. 
         # We can call this protocol 'linprobe_temporal_pooling' or something like that.
         
@@ -39,7 +40,6 @@ class STTFEncoder(nn.Module):
         self.rope = RotaryTemporalEmbedding(dim=self.blocks[0].attn.rot_dim)
         self.pos_embed = nn.Parameter(torch.zeros(1, 1, num_joints//patch_size, dim_feat))
         trunc_normal_(self.pos_embed, std=.02)
-
         # Initialize weights
         self.apply(self._init_weights)
         
@@ -53,6 +53,7 @@ class STTFEncoder(nn.Module):
         elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
+
 
     def forward(self, x, downsample_rate=None):
         if x.ndim == 5:
@@ -88,10 +89,10 @@ class STTFEncoder(nn.Module):
         x = self.norm(x)
 
         if self.protocol == "compute_representations":
-            x = x.reshape(NM, TP, VP, -1)                             # [NM, TP, VP, C]
-            joint_mask = patch_mask.unsqueeze(-1).float()             # [NM, TP, VP, 1]
+            x = x.reshape(NM, TP, VP, -1)                        # [NM, TP, VP, C]
+            joint_mask = patch_mask.unsqueeze(-1).float()        # [NM, TP, VP, 1]
             x = (x * joint_mask).sum(dim=2) / joint_mask.sum(dim=2).clamp(min=1) # joint-level masked mean (over VP) [NM, TP, C]
-            x = x.reshape(N, M, TP, -1).mean(dim=1)                       # [N, TP, C]
+            x = x.reshape(N, M, TP, -1).mean(dim=1)              # [N, TP, C]
         else:
             x = x.reshape(N, M, TP, VP, -1)
             x = self.head(x)

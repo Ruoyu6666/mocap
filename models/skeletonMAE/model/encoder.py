@@ -8,12 +8,12 @@ import warnings
 from .layers import MLP, SkeleEmbed, Block, Attention, trunc_normal_, DropPath
 
 
-
+# Action head is sequence level label
 class ActionHeadLinprobe(nn.Module):
     def __init__(self, dim_feat=512, num_classes=60, num_joints=25):
         super(ActionHeadLinprobe, self).__init__()
         self.fc = nn.Linear(dim_feat, num_classes)
-        
+
     def forward(self, feat):
         N, M, T, J, C = feat.shape
         feat = feat.mean(dim=[1,2,3]) # [N, C]
@@ -47,11 +47,10 @@ class ActionHeadFinetune(nn.Module):
 
 
 class STTFEncoder(nn.Module):
-    def __init__(self, dim_in=3, num_classes=3, dim_feat=256, depth=5, 
-                 num_heads=8, mlp_ratio=4, num_frames=120, num_joints=25, patch_size=1, t_patch_size=3,
-                 qkv_bias=True, qk_scale=None, drop_rate=0., 
-                 attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm, 
-                 protocol='compute_representations', dataset="mocap"): 
+    def __init__(self, dim_in=3, num_classes=3, dim_feat=256, depth=5, num_heads=8, mlp_ratio=4, 
+                 num_frames=120, num_joints=25, patch_size=1, t_patch_size=3,
+                 qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0., drop_path_rate=0., 
+                 norm_layer=nn.LayerNorm, protocol='compute_representations', dataset="mocap"): 
                 # protocol: ["compute_representations","linprobe", "finetune"]
         super().__init__()
 
@@ -131,10 +130,10 @@ class STTFEncoder(nn.Module):
         x = self.norm(x)
 
         if self.protocol == "compute_representations":
-            x = x.reshape(NM, TP, VP, -1)                             # [NM, TP, VP, C]
-            joint_mask = patch_mask.unsqueeze(-1).float()             # [NM, TP, VP, 1]
+            x = x.reshape(NM, TP, VP, -1)                           # [NM, TP, VP, C]
+            joint_mask = patch_mask.unsqueeze(-1).float()           # [NM, TP, VP, 1]
             x = (x * joint_mask).sum(dim=2) / joint_mask.sum(dim=2).clamp(min=1) # joint-level masked mean (over VP) [NM, TP, C]
-            x = x.reshape(N, M, TP, -1).mean(dim=1)                       # [N, TP, C]
+            x = x.reshape(N, M, TP, -1).mean(dim=1)                 # [N, TP, C]
         else:
             x = x.reshape(N, M, TP, VP, -1)
             x = self.head(x)
