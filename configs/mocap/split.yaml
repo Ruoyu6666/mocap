@@ -1,0 +1,70 @@
+fold_1:
+  CP1A:
+    train: ["M14", "M15", "M19"]
+    valid: ["M1"]
+  CP1B:
+    train: ["M2", "M3", "M4", "M5", "M6"]
+    valid: ["M1"]
+  INH1:
+    train: ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10"]
+    valid: ["M1", "M6"]
+  INH2:
+    train: ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10", "M12"]
+    valid: ["M1", "M6", "M11"]
+  MOS1aD:
+    train: ["M5", "M6", "M8", "M9", "M10"]
+    valid: ["M4"]
+
+
+fold_2:
+  CP1A:
+    train: ["M1", "M15", "M19"]
+    valid: ["M14"]
+  CP1B:
+    train: ["M1", "M3", "M4", "M5", "M6"]
+    valid: ["M2"]
+  INH1:
+    train: ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10"]
+    valid: ["M2", "M7"]
+  INH2:
+    train: ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10", "M11"]
+    valid: ["M2", "M7", "M12"]
+  MOS1aD:
+    train: ["M4", "M6", "M8", "M9", "M10"]
+    valid: ["M5"]
+
+
+fold_3:
+  CP1A:
+    train: ["M1", "M14", "M19"]
+    valid: ["M15"]
+  CP1B:
+    train: ["M1", "M2", "M4", "M5", "M6"]
+    valid: ["M3"]
+  INH1:
+    train: ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M10"]
+    valid: ["M3", "M8"]
+  INH2:
+    train: ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M11", "M12"]
+    valid: ["M3", "M8", "M10"]
+  MOS1aD:
+    train: ["M4", "M5", "M8", "M9", "M10"]
+    valid: ["M6"]
+
+
+fold_4:
+  CP1A:
+    train: ["M1", "M14", "M15"]
+    valid: ["M19"]
+  CP1B:
+    train: ["M1", "M2", "M3", "M5", "M6"]
+    valid: ["M4"]
+  INH1:
+    train: ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10"]
+    valid: ["M4", "M9"]
+  INH2:
+    train: ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10", "M12"]
+    valid: ["M4", "M9", "M11"]
+  MOS1aD:
+    train: ["M4", "M5", "M6", "M9", "M10"]
+    valid: ["M8"]

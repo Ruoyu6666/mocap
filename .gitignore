@@ -6,5 +6,6 @@ outputs/
 config/
 summary/
 **.txt
-dataset/old/
+datasets/old/**
 **/.ipynb_checkpoints/**
+**/.npy/**
