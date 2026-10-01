@@ -62,13 +62,11 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
 
     def get_kwargs(self) -> dict:
         """returns positional arguments"""
-        return {
-            "path": self.path,
-            "frame_rate": self.frame_rate,
-            "sample_frequency": self._sampling_rate,
-            "flatten": self.flatten,
-            "scale": self.scale,
-        }
+        return {"path": self.path,
+                "frame_rate": self.frame_rate,
+                "sample_frequency": self._sampling_rate,
+                "flatten": self.flatten,
+                "scale": self.scale,}
 
     @abstractmethod
     def load_data(self, include_testdata, include_round2data) -> None:

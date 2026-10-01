@@ -6,7 +6,6 @@ import argparse
 import numpy as np
 import pdb
 from tqdm import tqdm
-from itertools import islice
 from typing import Iterable
 import torch
 import torch.nn as nn
@@ -27,44 +26,6 @@ from models.skeletonMAE.model.skeletonMAE import SkeletonMAE
 #from datasets.mocap import MocapDataset
 from datasets.sdannce import SdannceDataset
 #from datasets.eyetrack import EyetrackDataset
-
-
-### For cross validation ###
-# sdannce
-fmr1_fold_1 = {"train":[402, 404, 405, 406, 407, 408], "valid": [401, 403]}
-fmr1_fold_2 = {"train":[401, 403, 405, 406, 407, 408], "valid": [402, 404]}
-fmr1_fold_3 = {"train":[401, 402, 403, 404, 407, 408], "valid": [405, 406]}
-fmr1_fold_4 = {"train":[401, 402, 404, 405, 406, 407], "valid": [403, 408]}
-
-# mocap
-mocap_fold_1 = {
-    "CP1A": {"train": ["M14", "M15", "M19"], "valid": ["M1"]},
-    "CP1B": {"train": ["M2", "M3", "M4", "M5", "M6"], "valid": ["M1"]},
-    "INH1": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10"], "valid": ["M1", "M6"]},
-    "INH2": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10", "M12"], "valid": ["M1", "M6", "M11"]},
-    "MOS1aD": {"train": ["M5", "M6", "M8", "M9", "M10"], "valid": ["M4"]}
-}
-mocap_fold_2 = {
-    "CP1A": {"train": ["M1", "M15", "M19"], "valid": ["M14"]},
-    "CP1B": {"train": ["M1", "M3", "M4", "M5", "M6"], "valid": ["M2"]},
-    "INH1": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10"], "valid": ["M2", "M7"]},
-    "INH2": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10", "M11"], "valid": ["M2", "M7", "M12"]},
-    "MOS1aD": {"train": ["M4", "M6", "M8", "M9", "M10"], "valid": ["M5"]}
-}
-mocap_fold_3 = {
-    "CP1A": {"train": ["M1", "M14", "M19"], "valid": ["M15"]},
-    "CP1B": {"train": ["M1", "M2", "M4", "M5", "M6"], "valid": ["M3"]},
-    "INH1": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M10"], "valid": ["M3", "M8"]},
-    "INH2": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M11", "M12"], "valid": ["M3", "M8", "M10"]},
-    "MOS1aD": {"train": ["M4", "M5", "M8", "M9", "M10"], "valid": ["M6"]}
-}
-mocap_fold_4 = {
-    "CP1A": {"train": ["M1", "M14", "M15"],  "valid": ["M19"]},
-    "CP1B": {"train": ["M1", "M2", "M3", "M5", "M6"],  "valid": ["M4"]},
-    "INH1": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10"], "valid": ["M4", "M9"]},
-    "INH2": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10", "M12"], "valid": ["M4", "M9", "M11"]},
-    "MOS1aD": {"train": ["M4", "M5", "M6", "M9", "M10"], "valid": ["M8"]}
-}
 
 
 def get_args_parser():
@@ -122,7 +83,7 @@ def get_args_parser():
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='weight decay (default: 0.05)')
 
     """Saving and logging"""
-    parser.add_argument("--log_interval", type=int, default=100)
+    parser.add_argument("--log_interval", type=int, default=200)
     parser.add_argument("--save_dir", type=str, default="./outputs/") #  models, results, checkpoints
     parser.add_argument("--ckpt_path", type=str, default=None) # checkpoint path for resuming training
     parser.add_argument("--if_test", type=str2bool, default=False, help="Whether to run test after each training epoch.")
@@ -217,7 +178,6 @@ def main(args):
             loader_test = DataLoader(dataset_test, #sampler=sampler_test,
                                      batch_size=args.batch_size, num_workers=args.num_workers,
                                      pin_memory=args.pin_mem, drop_last=False,)
-
         """
         if args.if_rotate_xz:  # True when training one model on both datasets CLB and FL2
             dataset_train_CLB = MocapDataset(mode = args.job, path_to_data_dir="/home/rguo_hpc/myfolder/data/mocap/data_CLB.pkl", 
@@ -229,8 +189,7 @@ def main(args):
         """
     if args.dataset == "sdannce":
         NormalizeConfig_sdannce = NormalizeConfig(left_shoulder=6, right_shoulder=9, left_hip=12, right_hip =15)
-        dataset_train = SdannceDataset(mode = args.job, 
-                                       path_to_data_dir=args.path_to_data_dir,
+        dataset_train = SdannceDataset(path_to_data_dir=args.path_to_data_dir,
                                        sampling_rate=args.sampling_rate,
                                        num_frames=args.num_frames,
                                        sliding_window=args.sliding_window,
@@ -241,8 +200,7 @@ def main(args):
                                        split = None,
                                        if_val = False)
         if args.if_test:
-            dataset_test = SdannceDataset(mode = args.job, 
-                                        path_to_data_dir=args.path_to_data_dir,
+            dataset_test = SdannceDataset(path_to_data_dir=args.path_to_data_dir,
                                         sampling_rate=args.sampling_rate,
                                         num_frames=args.num_frames,
                                         sliding_window=args.sliding_window,

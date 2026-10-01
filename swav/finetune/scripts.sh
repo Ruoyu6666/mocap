@@ -1,48 +1,59 @@
 ##### With RoPe #####
+
+#----------------
+#---  chd8 ---
+#----------------
+
+
+
+#----------------
+#---  cntnap2 ---
+#----------------
+python main.py --mode finetune_last_n --unfreeze_n 2 --batch_size 192\
+ --encoder_ckpt ../../outputs/sdannce/cntnap2/checkpoints/mae_checkpoint_epoch_5.pth \
+ --path_to_data_dir /home/rguo_hpc/myfolder/data/sdannce/data_cntnap2.pkl \
+ --config ../../configs/sdannce/cntnap2.yaml
+
+
+python main.py --mode finetune_last_n --unfreeze_n 2 --batch_size 192 \
+ --compute_representations --checkpoint_path swav_output/checkpoint_epoch_10.pt \
+ --path_to_data_dir /home/rguo_hpc/myfolder/data/sdannce/data_cntnap2.pkl \
+ --config ../../configs/sdannce/cntnap2.yaml --shuffle False --sliding_window 10
+ 
+
+
 #-------------
 #---  fmr1 ---
 #-------------
-# original
-python main.py --mode finetune_last_n --encoder_module models.skeletonMAE.model.encoder_rope \
- --encoder_ckpt ../../outputs/fmr1/50/RoPE/mae_checkpoint_epoch_10.pth \
- --num_frames 50 --batch_size 128
+#--- original ---
+#----------------
+python main.py --mode finetune_last_n --batch_size 128 \
+ --encoder_ckpt ../../outputs/sdannce/fmr1/50/RoPE/mae_checkpoint_epoch_10.pth
+# --sliding_window 25
 # --semisup True --swav_weight 0.7 --cls_weight 0.3 --shuffle True # with semisup 
+
 
 python main.py --mode finetune_last_n --encoder_module models.skeletonMAE.model.encoder_rope \
  --compute_representations --checkpoint_path swav_output/len50/rope/10ckpt/128batch/checkpoint_epoch_15.pt \
  --num_frames 50 --batch_size 128 --shuffle False
 
 
-python main.py --mode finetune_last_n --encoder_module models.skeletonMAE.model.encoder_rope \
- --encoder_ckpt ../../outputs/50/checkpoints/mae_checkpoint_epoch_10.pth \
- --num_frames 50 --batch_size 128
-
- python main.py --mode finetune_last_n --encoder_module models.skeletonMAE.model.encoder_rope \
- --compute_representations --checkpoint_path swav_output/checkpoint_epoch_15.pt \
- --num_frames 50 --batch_size 128 --shuffle False
-
-
-#----------------
-#---  cntnap2 ---
-#----------------
-python main.py --mode finetune_last_n --encoder_module models.skeletonMAE.model.encoder_rope \
- --encoder_ckpt ../../outputs/50/checkpoints/mae_checkpoint_epoch_5.pth --num_frames 50 --batch_size 256
-
-python main.py --mode finetune_last_n --encoder_module models.skeletonMAE.model.encoder_rope \
- --compute_representations --checkpoint_path swav_output/checkpoint_epoch_18.pt \
- --num_frames 50 --batch_size 256 --shuffle False
-
-
-
 #--------------------------------
 # ----- Supervised finetune -----
 #--------------------------------
 python main.py --mode finetune_last_n --encoder_module models.skeletonMAE.model.encoder_rope \
---encoder_ckpt ../../outputs/fmr1/50/RoPE/mae_checkpoint_epoch_10.pth  --num_frames 50 \
---pairing_mode classification_only
+--encoder_ckpt ../../outputs/sdannce/fmr1/50/RoPE/mae_checkpoint_epoch_10.pth  --num_frames 50 \
+--pairing_mode classification_only --unfreeze_n 4 --classifier_hidden_dim 192 --sliding_window 25
 
 
+python main.py --mode finetune_last_n --encoder_module models.skeletonMAE.model.encoder_rope \
+ --compute_representations --checkpoint_path swav_output/checkpoint_epoch_10.pt \
+ --num_frames 50 --shuffle False --unfreeze_n 4 --classifier_hidden_dim 192
 
+
+#---------------------------
+# ----- Hyperparameter -----
+#---------------------------
 # Experiment 1: finetune last 2 layers
 python main.py --mode finetune_last_n
 

@@ -42,22 +42,18 @@ def param_groups_lrd(model, weight_decay=0.05, no_weight_decay_list=[], layer_de
         if group_name not in param_group_names:
             this_scale = layer_scales[layer_id]
 
-            param_group_names[group_name] = {
-                "lr_scale": this_scale,
-                "weight_decay": this_decay,
-                "params": [],
-            }
-            param_groups[group_name] = {
-                "lr_scale": this_scale,
-                "weight_decay": this_decay,
-                "params": [],
-            }
+            param_group_names[group_name] = {"lr_scale": this_scale,
+                                             "weight_decay": this_decay,
+                                             "params": [],}
+            
+            param_groups[group_name] = {"lr_scale": this_scale,
+                                        "weight_decay": this_decay,
+                                        "params": [],}
 
         param_group_names[group_name]["params"].append(n)
         param_groups[group_name]["params"].append(p)
 
     # print("parameter groups: \n%s" % json.dumps(param_group_names, indent=2))
-
     return list(param_groups.values())
 
 
