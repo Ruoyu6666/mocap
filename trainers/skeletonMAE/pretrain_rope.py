@@ -3,10 +3,7 @@ import sys
 sys.path.append(os.getcwd()) # Adds the current directory to the Python path
 
 import argparse
-import numpy as np
-import pdb
 from tqdm import tqdm
-from itertools import islice
 from typing import Iterable
 import torch
 import torch.nn as nn
@@ -17,13 +14,6 @@ from trainers.utils import *
 from datasets.transform import NormalizeConfig
 from models.skeletonMAE.model.skeletonMAE_rope import SkeletonMAE
 from datasets.sdannce import SdannceDataset
-
-# sdannce
-fmr1_fold_1 = {"train":[402, 404, 405, 406, 407, 408], "valid": [401, 403]}
-fmr1_fold_2 = {"train":[401, 403, 405, 406, 407, 408], "valid": [402, 404]}
-fmr1_fold_3 = {"train":[401, 402, 403, 404, 407, 408], "valid": [405, 406]}
-fmr1_fold_4 = {"train":[401, 402, 404, 405, 406, 407], "valid": [403, 408]}
-
 
 def get_args_parser():
     parser = argparse.ArgumentParser("STTF Training & Compute Representation", add_help=False)
@@ -187,8 +177,7 @@ def main(args):
         """
     if args.dataset == "sdannce":
         NormalizeConfig_sdannce = NormalizeConfig(left_shoulder=6, right_shoulder=9, left_hip=12, right_hip =15)
-        dataset_train = SdannceDataset(mode = args.job, 
-                                       path_to_data_dir=args.path_to_data_dir,
+        dataset_train = SdannceDataset(path_to_data_dir=args.path_to_data_dir,
                                        sampling_rate=args.sampling_rate,
                                        num_frames=args.num_frames,
                                        sliding_window=args.sliding_window,
@@ -196,8 +185,7 @@ def main(args):
                                        augmentations=args.data_augment,
                                        view_invariant = args.view_invariant,
                                        model = "SkeletonMAE",
-                                       split = None,
-                                       if_val = False)
+                                       split = None, if_val = False)
         if args.if_test:
             dataset_test = SdannceDataset(mode = args.job, 
                                         path_to_data_dir=args.path_to_data_dir,
@@ -215,9 +203,9 @@ def main(args):
                                      pin_memory=args.pin_mem, drop_last=False,)
     if args.dataset == "eyetract":
         dataset_train = EyetrackDataset(path_to_data_dir=args.path_to_data_dir, num_frames = args.num_frames)
-    loader_train = DataLoader(dataset_train, #sampler=sampler_train,
-                                 batch_size=args.batch_size, num_workers=args.num_workers,
-                                 pin_memory=args.pin_mem, drop_last=True,)
+
+    loader_train = DataLoader(dataset_train, shuffle=True, batch_size=args.batch_size, 
+                              num_workers=args.num_workers, pin_memory=args.pin_mem, drop_last=True,)
 
     if args.job == "pretrain":
         """ Set up model for pretraining"""

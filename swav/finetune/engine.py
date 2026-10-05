@@ -20,13 +20,12 @@ def train_one_epoch_clip_augmented(model: SwAVSkeletonModel, dataloader, optimiz
     """
     model.train()
     running_loss = 0.0
-    downsample_rates = (1, 4, 10)
-    print(downsample_rates)
+    downsample_rates = (1, 5)
     n_views = len(downsample_rates)
     for step, batch in enumerate(dataloader):
         clip = batch[0] if isinstance(batch, (tuple, list)) else batch
-        clip = clip.to(device)      # (B, T, J, C)
-        B, T, _, _ = clip.shape
+        clip = clip.to(device)      
+        B, T, _, _ = clip.shape     # (B, T, J, C)
         scores_list = []
         for rate in downsample_rates:
             if rate == 1:
@@ -46,12 +45,24 @@ def train_one_epoch_clip_augmented(model: SwAVSkeletonModel, dataloader, optimiz
             else:
                 z_seq_v = model.encoder(clip_v) if rate == 1 else model.encoder(clip_v, rate)
 
+            # calculate  scores
+            # Sol 1: loss sequence level
             z_v = z_seq_v.mean(dim=1)  # (B, D) — pool, sequence
+            """
+            # Sol 2: loss on frame/patch level
+            D = z_seq_v.shape[-1]
+            if rate ==1:
+                z_v = z_seq_v.reshape(B, T//5, 5, D).mean(dim=2)
+                z_v = z_v.reshape(-1 ,D)
+            elif rate == 5:
+                z_v = z_seq_v.reshape(-1 ,D)
+            """
             p_v = model.projection_head(z_v) if model.projection_head is not None else z_v
             p_v = F.normalize(p_v, dim=1, p=2)
             scores_list.append(model.prototypes(p_v))
 
         loss = swav_loss_multiview(scores_list)
+
         optimizer.zero_grad()
         loss.backward()
         if freeze_prototypes_epoch:
@@ -69,100 +80,12 @@ def train_one_epoch_clip_augmented(model: SwAVSkeletonModel, dataloader, optimiz
 
 
 
-def train_one_epoch_clip_augmented_sequence_semisup(
-    model: SwAVSkeletonModel, dataloader, optimizer, augment: Augmentations, device, 
-    n_views: int = 2, pool: str = "mean",
-    swav_weight: float = 1.0, cls_weight: float = 1.0, ignore_index: int = -100,
-    freeze_prototypes_epoch: bool = False, log_every: int = 100,
-):
-    """
-    Joint clip-level SwAV (augmented_sequence scheme) + frame-level classification
-        total_loss = swav_weight * swav_loss + cls_weight * cls_loss
- 
-    The SwAV loss operates on POOLED (B, D) clip-level embeddings, one per augmented view. 
-    The classification loss operates on the UNPOOLED (B, T, D) per-frame embeddings from the FIRST view only, 
-    before pooling — labels are aligned to that view's T via align_labels_to_tokens. 
-    These are two genuinely  different granularities (clip-level clustering vs frame-level classification) computed 
-    from the same n_views  encoder forward passes — classification doesn't add any extra encoder compute.
- 
-    Requires model.classifier_head to be set. Batches must be (clip, labels): labels (B, T_raw), 
-    ignore_index (-100 default) marking unlabeled frames.
-    """
-    assert model.classifier_head is not None, (
-        "model.classifier_head must be set (pass a ClassifierHead to SwAVSkeletonModel) for semi-supervised training")
-    model.train()
-    running_loss, running_swav, running_cls = 0.0, 0.0, 0.0
-    mode = getattr(model, "mode", "finetune")
 
-    downsample_rates = (1, 4, 10)
-    print(downsample_rates)
-    n_views = len(downsample_rates)
-
-    for step, (clip, labels) in enumerate(dataloader):
-        clip = clip.to(device)      # (B, T, J, C)
-        B, T, _, _ = clip.shape
-        labels = labels.to(device)  # (B, T_raw)
-        scores_list = []
-        z_seq_first = None
-
-        for v in range(n_views):
-            clip_v = augment(clip)
-            if mode == "freeze":
-                with torch.no_grad():
-                    z_seq_v = model.encoder(clip_v)  # (B, T, D)
-            else:
-                z_seq_v = model.encoder(clip_v)
-            if v == 0:
-                z_seq_first = z_seq_v  # kept unpooled for classification
- 
-            z_v = pool_sequence(z_seq_v, pool)  # (B, D)
-            p_v = model.projection_head(z_v) if model.projection_head is not None else z_v
-            p_v = F.normalize(p_v, dim=1, p=2)
-            scores_list.append(model.prototypes(p_v))
- 
-        loss_swav = swav_loss_multiview(scores_list)
- 
-        # --- supervised frame-level classification (first view, unpooled) ---
-        labels_aligned = align_labels_to_tokens(labels, T)  # (B, T)
-        logits = model.classifier_head(z_seq_first)         # (B, T, num_classes)
-        valid = (labels_aligned != ignore_index)
-        if valid.any():
-            loss_cls = F.cross_entropy(
-                logits.reshape(B * T, -1), labels_aligned.reshape(B * T), ignore_index=ignore_index,
-            )
-        else:
-            loss_cls = torch.zeros((), device=device)
- 
-        loss = swav_weight * loss_swav + cls_weight * loss_cls
-        optimizer.zero_grad()
-        loss.backward()
-        if freeze_prototypes_epoch:
-            for p in model.prototypes.parameters():
-                p.grad = None
- 
-        optimizer.step()
-        model.prototypes.normalize_prototypes()
-        running_loss += loss.item()
-        running_swav += loss_swav.item()
-        running_cls += loss_cls.item()
-        if step % log_every == 0:
-            print(f"step {step:5d}  total {loss.item():.4f}  swav {loss_swav.item():.4f}  cls {loss_cls.item():.4f}  "
-                  f"(labeled frames: {valid.sum().item()}/{B*T})")
- 
-    n = max(1, len(dataloader))
-    return running_loss / n, running_swav / n, running_cls / n
-
-
-
-
-
-
-def train_one_epoch_clip_augmented_semisup(
-    model: SwAVSkeletonModel,
-    dataloader,
-    optimizer,
-    augment: Augmentations,
-    device: str = "cuda",
+def train_one_epoch_clip_augmented_sequence_semisup(model: SwAVSkeletonModel,
+    dataloader, optimizer,
+    augment,
+    device,
+    downsample_rates=(1, 4, 10),
     swav_weight: float = 1.0,
     cls_weight: float = 1.0,
     ignore_index: int = -100,
@@ -170,84 +93,145 @@ def train_one_epoch_clip_augmented_semisup(
     log_every: int = 50,
 ):
     """
-    Joint SwAV (frame-level, augmented-pair scheme — see) + frame-level classification loss:
- 
+    Joint clip-level SwAV + frame-level classification loss
         total_loss = swav_weight * swav_loss + cls_weight * cls_loss
  
-    Requires model.classifier_head to be set. Batches must be
-    (clip, labels): labels (B, T_raw) integer class indices, ignore_index
-    (default -100) marking unlabeled frames — supports partial/sparse
-    labeling, same as train_one_epoch_clip_binned_semisup.
+    Each entry in downsample_rates gives one view:
+    -> "clean" view: no augmentation, just dataloader.dataset's mocap_normalize, encoder called at 
+       its native rate. This view's UNPOOLED z_seq is also what the classification loss attaches to.
  
-    The classification loss uses view_a's (the first augmented copy's) z_seq only — labels are aligned to 
-    its T via align_labels_to_tokens. Only one view is classified, not both, to avoid doubling the
-    classification compute; if you want the classifier trained on both augmented views too (a mild 
-    consistency-regularization effect), average the two views' cls losses instead.
+    All views are pooled (mean over time) and compared via swav_loss_multiview .
+    Classification doesn't add any extra encoder compute: it reuses the rate=1 view's forward pass, just before pooling.
+ 
+    downsample_rates MUST include 1 — that's the only view with the clip's unsubsampled time resolution, 
+    which the classifier attaches to via align_labels_to_tokens. Requires model.classifier_head to be set. 
+    Batches must be (clip, labels): labels (B, T_raw) integer class indices, ignore_index (default -100) 
+    marking unlabeled frames — supports partial/sparse labeling.
     """
     assert model.classifier_head is not None, (
-        "model.classifier_head must be set (pass a ClassifierHead instance "
-        "to SwAVSkeletonModel) for semi-supervised training"
+        "model.classifier_head must be set (pass a ClassifierHead instance " "to SwAVSkeletonModel) for semi-supervised training"
     )
     model.train()
     running_loss, running_swav, running_cls = 0.0, 0.0, 0.0
+    n_views = len(downsample_rates)
  
     for step, (clip, labels) in enumerate(dataloader):
         clip = clip.to(device)      # (B, T, J, C)
         labels = labels.to(device)  # (B, T_raw)
+        B, T, _, _ = clip.shape
  
-        clip_a = augment(clip)
-        clip_b = augment(clip)
+        scores_list = []
+        z_seq_clean = None
+        for rate in downsample_rates:
+            if rate == 1:
+                clip_v_np = clip.clone().cpu().numpy()
+                for i in range(B):
+                    clip_v_np[i] = dataloader.dataset.mocap_normalize(clip_v_np[i])[0]
+            else:
+                clip_v_np = clip.clone().cpu().numpy()[:, ::rate]
+                for i in range(B):
+                    seq = augment(clip_v_np[i])
+                    clip_v_np[i] = dataloader.dataset.mocap_normalize(seq)[0]
+            clip_v = torch.tensor(clip_v_np, dtype=torch.float32).to(device)
  
-        if model.mode == "freeze":
-            with torch.no_grad():
-                z_seq_a = model.encoder(clip_a)  # (B, T, D)
-                z_seq_b = model.encoder(clip_b)  # (B, T, D)
-        else:
-            z_seq_a = model.encoder(clip_a)
-            z_seq_b = model.encoder(clip_b)
+            if model.mode == "freeze":
+                with torch.no_grad():
+                    z_seq_v = model.encoder(clip_v) if rate == 1 else model.encoder(clip_v, rate)
+            else:
+                z_seq_v = model.encoder(clip_v) if rate == 1 else model.encoder(clip_v, rate)
  
-        B, T, D = z_seq_a.shape
-        z_a = z_seq_a.reshape(B * T, D)
-        z_b = z_seq_b.reshape(B * T, D)
+            if rate == 1:
+                z_seq_clean = z_seq_v  # make a unpooled copy for classification
+            z_v = z_seq_v.mean(dim=1)  # (B, D) — pool, sequence
+            p_v = model.projection_head(z_v) if model.projection_head is not None else z_v
+            p_v = F.normalize(p_v, dim=1, p=2)
+            scores_list.append(model.prototypes(p_v))
+
+        loss_swav = swav_loss_multiview(scores_list)
  
-        p_a = model.projection_head(z_a) if model.projection_head is not None else z_a
-        p_b = model.projection_head(z_b) if model.projection_head is not None else z_b
-        p_a = F.normalize(p_a, dim=1, p=2)
-        p_b = F.normalize(p_b, dim=1, p=2)
- 
-        scores_a = model.prototypes(p_a)
-        scores_b = model.prototypes(p_b)
-        loss_swav = swav_loss(scores_a, scores_b)
- 
-        # --- supervised frame-level classification (view_a only) ---
-        labels_aligned = align_labels_to_tokens(labels, T)  # (B, T)
-        logits = model.classifier_head(z_seq_a)             # (B, T, num_classes)
+        # --- supervised frame-level classification (clean/rate=1 view) ---
+        _, T_clean, D = z_seq_clean.shape
+        labels_aligned = align_labels_to_tokens(labels, T_clean)  # (B, T_clean)
+        labels_aligned  = labels_aligned .long() - 1
+        logits = model.classifier_head(z_seq_clean)                # (B, T_clean, num_classes)
         valid = (labels_aligned != ignore_index)
         if valid.any():
-            loss_cls = F.cross_entropy(logits.reshape(B * T, -1), labels_aligned.reshape(B * T),
-                                    ignore_index=ignore_index,)
+            loss_cls = F.cross_entropy(
+                logits.reshape(B * T_clean, -1), labels_aligned.reshape(B * T_clean),
+                ignore_index=ignore_index,
+            )
         else:
             loss_cls = torch.zeros((), device=device)
-        loss = swav_weight * loss_swav + cls_weight * loss_cls
- 
+        loss =  cls_weight * loss_cls + swav_weight * loss_swav
         optimizer.zero_grad()
         loss.backward()
+ 
         if freeze_prototypes_epoch:
             for p in model.prototypes.parameters():
                 p.grad = None
- 
         optimizer.step()
         model.prototypes.normalize_prototypes()
+ 
         running_loss += loss.item()
         running_swav += loss_swav.item()
         running_cls += loss_cls.item()
         if step % log_every == 0:
-            print(f"step {step:5d}  total {loss.item():.4f}  "
-                  f"swav {loss_swav.item():.4f}  cls {loss_cls.item():.4f}  "
-                  f"(labeled frames: {valid.sum().item()}/{B*T})")
+            print(f"step {step:5d}  total {loss.item():.4f} swav {loss_swav.item():.4f}  cls {loss_cls.item():.4f}  "
+                  f"(labeled frames: {valid.sum().item()}/{B*T_clean}, n_views={n_views})")
  
     n = max(1, len(dataloader))
     return running_loss / n, running_swav / n, running_cls / n
+
+
+
+def train_one_epoch_clip_classifier_only(model: SwAVSkeletonModel, dataloader, 
+                    optimizer, augment=None, device: str = "cuda",
+                    ignore_index: int = -100, log_every: int = 50,):
+    """
+    Requires model.classifier_head to be set. Batches must be (clip, labels): labels (B, T_raw) 
+    integer class indices, ignore_index (default -100) marking unlabeled frames — supports 
+    partial/sparse labeling. A batch with zero labeled frames is skipped entirely (no
+    optimizer step) rather than backpropagating a meaningless zero loss.
+    """
+    assert model.classifier_head is not None, (
+        "model.classifier_head must be set for classification-only training")
+    model.train()
+    running_loss = 0.0
+    n_batches_used = 0
+ 
+    for step, (clip, labels) in enumerate(dataloader):
+        clip = clip.to(device)      # (B, T, J, C)
+        labels = labels.to(device)  # (B, T_raw)
+        clip_in = augment(clip) if augment is not None else clip
+ 
+        if model.mode == "freeze":
+            with torch.no_grad():
+                z_seq = model.encoder(clip_in)  # (B, T, D)
+        else:
+            z_seq = model.encoder(clip_in)
+ 
+        B, T, D = z_seq.shape
+        labels_aligned = align_labels_to_tokens(labels, T)  # (B, T)
+        labels_aligned  = labels_aligned .long() - 1
+        valid = (labels_aligned != ignore_index)
+        if not valid.any():
+            if step % log_every == 0:
+                print(f"step {step:5d}  no labeled frames this batch, skipping")
+            continue
+ 
+        logits = model.classifier_head(z_seq)  # (B, T, num_classes)
+        loss = F.cross_entropy(logits.reshape(B * T, -1), labels_aligned.reshape(B * T),
+                               ignore_index=ignore_index,)
+        optimizer.zero_grad()
+        loss.backward()
+
+        optimizer.step()
+        running_loss += loss.item()
+        n_batches_used += 1
+        if step % log_every == 0:
+            print(f"step {step:5d}  cls_loss {loss.item():.4f} (labeled frames: {valid.sum().item()}/{B*T})")
+ 
+    return running_loss / n_batches_used
 
 
 """

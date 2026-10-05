@@ -1,9 +1,3 @@
-fmr1_fold_1 = {"train":[402, 404, 405, 406, 407, 408], "valid": [401, 403]}
-fmr1_fold_2 = {"train":[401, 403, 405, 406, 407, 408], "valid": [402, 404]}
-fmr1_fold_3 = {"train":[401, 402, 403, 404, 407, 408], "valid": [405, 406]}
-fmr1_fold_4 = {"train":[401, 402, 404, 405, 406, 407], "valid": [403, 408]}
-
-
 import os
 import sys
 sys.path.append(os.getcwd()) # Adds the current directory to the Python path
@@ -11,11 +5,11 @@ sys.path.append(os.getcwd()) # Adds the current directory to the Python path
 import argparse
 import numpy as np
 from tqdm import tqdm
+import yaml
+
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 
 from trainers.utils import *
 from models.skeletonMAE.util import misc as misc
@@ -51,8 +45,9 @@ def get_args_parser():
     
     
     """Dataset and DataLoader parameters"""
-    parser.add_argument("--dataset",  type=str, default='mocap')
-    parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/data/mocap/data_FL2.pkl')
+    parser.add_argument("--dataset", type=str, default = 'mocap')
+    parser.add_argument("--config", type=str, default = 'configs/sdannce/fmr1.yaml')
+    parser.add_argument("--path_to_data_dir", type=str, default='../data/mocap/data_FL2.pkl')
     parser.add_argument("--sliding_window", default=60, type=int)
     parser.add_argument("--sampling_rate", default=1, type=int)
     parser.add_argument("--interp_holes", default=False, type=str2bool)
@@ -60,16 +55,15 @@ def get_args_parser():
     parser.add_argument("--view_invariant", default=True, type=str2bool)
     parser.add_argument("--data_augment", default=False, type=str2bool)
     parser.add_argument("--normalize", default=True, type=str2bool)
-    parser.add_argument("--centeralign", action="store_true")       # for mabe mice dataset
-    parser.add_argument("--include_testdata", action="store_true")  # for mabe mice dataset
+    #parser.add_argument("--centeralign", action="store_true")       # for mabe mice dataset
+    #parser.add_argument("--include_testdata", action="store_true")  # for mabe mice dataset
 
     parser.add_argument("--num_workers", default=8, type=int)
     parser.add_argument("--pin_mem", action="store_true", help="Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.",)
 
     """Training parameters"""
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--epochs", type=int, default=50)
-
+    #parser.add_argument("--epochs", type=int, default=50)
     """Saving and logging"""
     parser.add_argument("--log_interval", type=int, default=100)
     parser.add_argument("--save_dir", type=str, default="./outputs/") #  models, results, checkpoints
@@ -84,8 +78,7 @@ def get_args_parser():
 
 def make_taper_window(latent_len, edge_frac=0.25):
     """
-    Hann-style taper: weight ~0 at edges, ~1 in the middle.
-    edge_frac controls how much of the window is ramp vs flat top.
+    Hann-style taper: weight ~0 at edges, ~1 in the middle. edge_frac controls how much of the window is ramp vs flat top.
     """
     ramp_len = max(1, int(latent_len * edge_frac))
     window = torch.ones(latent_len)
@@ -144,6 +137,10 @@ if __name__ == "__main__":
     timestamp = readable_timestamp()
     args = get_args_parser()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    with open(args.config) as f:
+        split = yaml.safe_load(f)
+
     if args.job == "compute_representations":
         """Set up data set and data loader"""
         if args.dataset == "mabe_mice":
@@ -155,8 +152,7 @@ if __name__ == "__main__":
                                         augmentations=None,
                                         include_testdata=True,)
         elif args.dataset == "sdannce":
-            dataset = SdannceDataset(mode = args.job, 
-                                     path_to_data_dir=args.path_to_data_dir,
+            dataset = SdannceDataset(path_to_data_dir=args.path_to_data_dir,
                                      sampling_rate=args.sampling_rate,
                                      num_frames=args.num_frames,
                                      sliding_window=args.sliding_window,
@@ -165,7 +161,7 @@ if __name__ == "__main__":
                                      augmentations=args.data_augment,
                                      normalize = args.normalize, 
                                      model = "SkeletonMAE",
-                                     split = fmr1_fold_1,
+                                     split = split["fold_1"],
                                      if_val = args.if_val)                
         elif args.dataset == "mocap":
             dataset = MocapDataset(mode = args.job,
@@ -184,10 +180,8 @@ if __name__ == "__main__":
         elif args.dataset == "eyetract":
             dataset = EyetrackDataset(path_to_data_dir=args.path_to_data_dir, num_frames = args.num_frames)
 
-        loader = DataLoader(dataset, #sampler=sampler_test, 
-                            batch_size=args.batch_size, 
-                            num_workers=args.num_workers, pin_memory=args.pin_mem, drop_last=False,)
-
+        loader = DataLoader(dataset, batch_size=args.batch_size, num_workers=args.num_workers, 
+                            pin_memory=args.pin_mem, drop_last=False,)
 
         # Set up encoder-only model for compute representation
         model = STTFEncoder(dim_in=args.dim_in,

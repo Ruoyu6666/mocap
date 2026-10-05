@@ -1,48 +1,3 @@
-"""
-mouse_names = {
-    "CP1A": ['M1', 'M14', 'M15', 'M19'], 
-    "CP1B": ['M1', 'M2', 'M3', 'M4', 'M5', 'M6'], 
-    "INH1": ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10'], 
-    "INH2": ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M8', 'M9', 'M10', 'M11', 'M12'], 
-    "MOS1aD": ['M4', 'M5', 'M6', 'M8', 'M9', 'M10']}
-"""
-# k fold validation based on mouse
-mocap_fold_1 = {
-        "CP1A": {"train": ["M14", "M15", "M19"], "valid": ["M1"]},
-        "CP1B": {"train": ["M2", "M3", "M4", "M5", "M6"], "valid": ["M1"]},
-        "INH1": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10"], "valid": ["M1", "M6"]},
-        "INH2": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10", "M12"], "valid": ["M1", "M6", "M11"]},
-        "MOS1aD": {"train": ["M5", "M6", "M8", "M9", "M10"], "valid": ["M4"]}
-}
-mocap_fold_2 = {
-        "CP1A": {"train": ["M1", "M15", "M19"], "valid": ["M14"]},
-        "CP1B": {"train": ["M1", "M3", "M4", "M5", "M6"], "valid": ["M2"]},
-        "INH1": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10"], "valid": ["M2", "M7"]},
-        "INH2": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10", "M11"], "valid": ["M2", "M7", "M12"]},
-        "MOS1aD": {"train": ["M4", "M6", "M8", "M9", "M10"], "valid": ["M5"]}
-}
-mocap_fold_3 = {
-        "CP1A": {"train": ["M1", "M14", "M19"], "valid": ["M15"]},
-        "CP1B": {"train": ["M1", "M2", "M4", "M5", "M6"], "valid": ["M3"]},
-        "INH1": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M10"], "valid": ["M3", "M8"]},
-        "INH2": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M11", "M12"], "valid": ["M3", "M8", "M10"]},
-        "MOS1aD": {"train": ["M4", "M5", "M8", "M9", "M10"], "valid": ["M6"]}
-}
-mocap_fold_4 = {
-        "CP1A": {"train": ["M1", "M14", "M15"],  "valid": ["M19"]},
-        "CP1B": {"train": ["M1", "M2", "M3", "M5", "M6"],  "valid": ["M4"]},
-        "INH1": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10"], "valid": ["M4", "M9"]},
-        "INH2": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10", "M12"], "valid": ["M4", "M9", "M11"]},
-        "MOS1aD": {"train": ["M4", "M5", "M6", "M9", "M10"], "valid": ["M8"]}
-}
-
-
-fmr1_fold_1 = {"train":[402, 404, 405, 406, 407, 408], "valid": [401, 403]}
-fmr1_fold_2 = {"train":[401, 403, 405, 406, 407, 408], "valid": [402, 404]}
-fmr1_fold_3 = {"train":[401, 402, 403, 404, 407, 408], "valid": [405, 406]}
-fmr1_fold_4 = {"train":[401, 402, 404, 405, 406, 407], "valid": [403, 408]}
-
-
 import os
 import sys
 sys.path.append(os.getcwd()) # Adds the current directory to the Python path
@@ -50,6 +5,7 @@ sys.path.append(os.getcwd()) # Adds the current directory to the Python path
 import argparse
 import numpy as np
 import pdb
+import yaml
 from tqdm import tqdm
 from itertools import islice
 from typing import Iterable
@@ -66,7 +22,6 @@ from models.skeletonMAE.util import misc as misc
 from models.skeletonMAE.util.pos_embed import interpolate_temp_embed
 #from models.MAE.util.misc import NativeScalerWithGradNormCount as NativeScaler
 
-from models.skeletonMAE.model.skeletonMAE import SkeletonMAE
 from models.skeletonMAE.model.encoder import STTFEncoder
 #from dataset.mabe_mice import MABeMouseDataset
 #sfrom dataset.mocap import MocapDataset
@@ -85,9 +40,9 @@ def get_args_parser():
     parser.add_argument('--num_heads', default=8,  type=int, help='number of attention heads')
     parser.add_argument('--mlp_ratio', default=4, type=int, help='ratio of mlp hidden dim to embedding dim')
     parser.add_argument('--num_frames', default=300, type=int, help='number of frames in the input skeleton sequence')
-    parser.add_argument('--num_joints', default=10, type=int, help='number of joints in the input skeleton sequence')
-    parser.add_argument('--patch_size', default=1, type=int, help='spatial patch size (number of joints per patch)')
-    parser.add_argument('--t_patch_size', default=3, type=int, help='temporal patch size (number of frames per patch)')
+    parser.add_argument('--num_joints', default=18, type=int, help='number of joints in the input skeleton sequence')
+    parser.add_argument('--patch_size', default=3, type=int, help='spatial patch size (number of joints per patch)')
+    parser.add_argument('--t_patch_size', default=1, type=int, help='temporal patch size (number of frames per patch)')
     parser.add_argument('--qkv_bias', action='store_true', help='if True, add a learnable bias to query, key, value')
     parser.add_argument('--qk_scale', default=None, type=float, help='override default qk scale of head_dim ** -0.5 if set')
     parser.add_argument('--drop_rate', default=0., type=float, help='dropout rate')
@@ -100,6 +55,8 @@ def get_args_parser():
     """Dataset and DataLoader parameters"""
     parser.add_argument("--dataset",  type=str, default='mocap')
     parser.add_argument("--path_to_data_dir", type=str, default='/home/rguo_hpc/myfolder/data/mocap/data_FL2.pkl')
+    parser.add_argument("--config", type=str, default = 'configs/sdannce/fmr1.yaml')
+
     parser.add_argument("--sliding_window", default=60, type=int)
     parser.add_argument("--sampling_rate", default=1, type=int)
     parser.add_argument("--interp_holes", default=False, type=str2bool)
@@ -199,6 +156,9 @@ if __name__ == "__main__":
     timestamp = readable_timestamp()
     args = get_args_parser()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    with open(args.config) as f:
+        split = yaml.safe_load(f)
+
     if args.job == "compute_representations":
         """Set up data set and data loader"""
         if args.dataset == "mabe_mice":
@@ -220,7 +180,7 @@ if __name__ == "__main__":
                                        augmentations=args.data_augment,
                                        normalize = args.normalize, 
                                        model = "SkeletonMAE",
-                                       split = fmr1_fold_1,
+                                       split = split["fold_1"],
                                        if_val = args.if_val)                
         elif args.dataset == "mocap":
             dataset = MocapDataset(mode = args.job,

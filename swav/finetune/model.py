@@ -40,6 +40,7 @@ class SwAVSkeletonModel(nn.Module):
         self.projection_head = projection_head
         proto_in_dim = projection_head.net[-1].out_features if projection_head is not None else embed_dim
         self.prototypes = PrototypeLayer(proto_in_dim, num_prototypes)
+        self.classifier_head = classifier_head
  
         if mode == "freeze":
             for p in self.encoder.parameters():

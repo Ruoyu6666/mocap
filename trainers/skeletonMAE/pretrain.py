@@ -39,9 +39,9 @@ def get_args_parser():
     parser.add_argument('--num_heads', default=8,  type=int, help='number of attention heads')
     parser.add_argument('--mlp_ratio', default=4, type=int, help='ratio of mlp hidden dim to embedding dim')
     parser.add_argument('--num_frames', default=300, type=int, help='number of frames in the input skeleton sequence')
-    parser.add_argument('--num_joints', default=10, type=int, help='number of joints in the input skeleton sequence')
-    parser.add_argument('--patch_size', default=1, type=int, help='spatial patch size (number of joints per patch)')
-    parser.add_argument('--t_patch_size', default=3, type=int, help='temporal patch size (number of frames per patch)')
+    parser.add_argument('--num_joints', default=18, type=int, help='number of joints in the input skeleton sequence')
+    parser.add_argument('--patch_size', default=3, type=int, help='spatial patch size (number of joints per patch)')
+    parser.add_argument('--t_patch_size', default=1, type=int, help='temporal patch size (number of frames per patch)')
     
     parser.add_argument('--qkv_bias', action='store_true', help='if True, add a learnable bias to query, key, value')
     parser.add_argument('--qk_scale', default=None, type=float, help='override default qk scale of head_dim ** -0.5 if set')
