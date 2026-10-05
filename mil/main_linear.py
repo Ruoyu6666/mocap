@@ -10,15 +10,15 @@ parser = argparse.ArgumentParser(description='time classification by TimeMIL')
 parser.add_argument('--dataset', default="sdannce", type=str, help='dataset ')
 parser.add_argument('--label', default="drug", type=str, help='dataset ')
 parser.add_argument('--subseq_len', default=3000, type=int, help='the length of sub sequence')
-parser.add_argument('--path_to_data_dir', default="/home/rguo_hpc/myfolder/data/sdannce/data_cntnap2.pkl", type=str)
-parser.add_argument("--config", type=str, default = '../configs/sdannce/cntnap2.yaml')
+parser.add_argument('--path_to_data_dir', default="/home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl", type=str)
+parser.add_argument("--config", type=str, default = '../configs/sdannce/fmr1.yaml')
 
 
 
 args = parser.parse_args()
 if args.dataset == "sdannce":
-    Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/sdannce/cntnap2/representations/mae_sdannce_tr.npy")[:, 25:3025]
-    Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/sdannce/cntnap2/representations/mae_sdannce_val.npy")[:, 25:3025]
+    Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/sdannce/fmr1/50/representations/mae_sdannce_tr.npy")[:, 25:3025]
+    Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/sdannce/fmr1/50/representations/mae_sdannce_val.npy")[:, 25:3025]
     print(Xtr.shape, Xte.shape)
 if args.dataset == "sdannce_kinematic":
     Xtr = np.load("/home/rguo_hpc/myfolder/mocap/swav/kinematic/data/kinematic_tr.py.npy")

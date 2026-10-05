@@ -1,37 +1,6 @@
-mocap_fold_1 = {
-    "CP1A": {"train": ["M14", "M15", "M19"], "valid": ["M1"]},
-    "CP1B": {"train": ["M2", "M3", "M4", "M5", "M6"], "valid": ["M1"]},
-    "INH1": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10"], "valid": ["M1", "M6"]},
-    "INH2": {"train": ["M2", "M3", "M4", "M5", "M7", "M8", "M9", "M10", "M12"], "valid": ["M1", "M6", "M11"]},
-    "MOS1aD": {"train": ["M5", "M6", "M8", "M9", "M10"], "valid": ["M4"]}}
-mocap_fold_2 = {
-    "CP1A": {"train": ["M1", "M15", "M19"], "valid": ["M14"]},
-    "CP1B": {"train": ["M1", "M3", "M4", "M5", "M6"], "valid": ["M2"]},
-    "INH1": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10"], "valid": ["M2", "M7"]},
-    "INH2": {"train": ["M1", "M3", "M4", "M5", "M6", "M8", "M9", "M10", "M11"], "valid": ["M2", "M7", "M12"]},
-    "MOS1aD": {"train": ["M4", "M6", "M8", "M9", "M10"], "valid": ["M5"]}}
-mocap_fold_3 = {
-    "CP1A": {"train": ["M1", "M14", "M19"], "valid": ["M15"]},
-    "CP1B": {"train": ["M1", "M2", "M4", "M5", "M6"], "valid": ["M3"]},
-    "INH1": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M10"], "valid": ["M3", "M8"]},
-    "INH2": {"train": ["M1", "M2", "M4", "M5", "M6", "M7", "M9", "M11", "M12"], "valid": ["M3", "M8", "M10"]},
-    "MOS1aD": {"train": ["M4", "M5", "M8", "M9", "M10"], "valid": ["M6"]}}
-mocap_fold_4 = {
-    "CP1A": {"train": ["M1", "M14", "M15"],  "valid": ["M19"]},
-    "CP1B": {"train": ["M1", "M2", "M3", "M5", "M6"],  "valid": ["M4"]},
-    "INH1": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10"], "valid": ["M4", "M9"]},
-    "INH2": {"train": ["M1", "M2", "M3", "M5", "M6", "M7", "M8", "M10", "M12"], "valid": ["M4", "M9", "M11"]},
-    "MOS1aD": {"train": ["M4", "M5", "M6", "M9", "M10"], "valid": ["M8"]}}
-
-fmr1_fold_1 = {"train":[402, 404, 405, 406, 407, 408], "valid": [401, 403]}
-fmr1_fold_2 = {"train":[401, 403, 405, 406, 407, 408], "valid": [402, 404]}
-fmr1_fold_3 = {"train":[401, 402, 403, 404, 407, 408], "valid": [405, 406]}
-fmr1_fold_4 = {"train":[401, 402, 404, 405, 406, 407], "valid": [403, 408]}
-
 import sys, argparse, os
 import numpy as np
-from tqdm import tqdm
-from collections import OrderedDict
+import yaml
 import random
 import warnings
 from timm.optim.adamp import AdamP
@@ -55,7 +24,6 @@ import torch.nn.functional as F
 from utils import *
 from lookhead import Lookahead
 from models.timemil import TimeMIL
-from models.mil import MIL
 
 # Suppress all warnings
 warnings.filterwarnings("ignore")
@@ -142,7 +110,7 @@ def test(testloader, milnet, criterion, args, device):
     #test_predictions_prob = np.exp(test_predictions)/np.sum(np.exp(test_predictions),axis=1,keepdims=True)
     test_predictions = np.argmax(test_predictions,axis=1)
     test_labels = np.argmax(test_labels,axis=1)
-    print(f"Test labels: {test_labels}, Test predictions: {test_predictions}")
+    #print(f"Test labels: {test_labels}, Test predictions: {test_predictions}")
 
     cm = confusion_matrix(test_labels, test_predictions)
     print("Confusion Matrix:")
@@ -159,18 +127,7 @@ def test(testloader, milnet, criterion, args, device):
     
     r_marco = recall_score(test_labels,test_predictions,average='macro')
     r_micro = recall_score(test_labels,test_predictions,average='micro')
-    """
-    if args.num_classes ==2:
-        roc_auc_ovo_marco = roc_auc_score(test_labels,test_predictions_prob[:,1],average='macro')
-        roc_auc_ovo_micro = 0.# roc_auc_score(test_labels,test_predictions_prob,average='micro',multi_class='ovo')
-        roc_auc_ovr_marco = roc_auc_score(test_labels,test_predictions_prob[:,1],average='macro')
-        roc_auc_ovr_micro = 0.# roc_auc_score(test_labels,test_predictions_prob,average='micro',multi_class='ovr')
-    else:
-        roc_auc_ovo_marco = roc_auc_score(test_labels,test_predictions_prob,average='macro',multi_class='ovo')
-        roc_auc_ovo_micro = 0.# roc_auc_score(test_labels,test_predictions_prob,average='micro',multi_class='ovo')
-        roc_auc_ovr_marco = roc_auc_score(test_labels,test_predictions_prob,average='macro',multi_class='ovr')
-        roc_auc_ovr_micro = 0.# 
-    """
+    
     results = [avg_score, balanced_avg_score, f1_marco, f1_micro, p_marco, p_micro, r_marco, r_micro]
     return x_test, total_loss / len(testloader), results
 
@@ -178,11 +135,12 @@ def test(testloader, milnet, criterion, args, device):
 
 def main():
     parser = argparse.ArgumentParser(description='time classification by TimeMIL')
-    parser.add_argument('--dataset', default="mocap", type=str, help='dataset ')
-    parser.add_argument('--data_path', default="/home/rguo_hpc/myfolder/code/mocap/data/mocap")
+    parser.add_argument('--dataset', default="sdannce", type=str, help='dataset ')
+    parser.add_argument('--path_to_data_dir', default="/home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl")
+    parser.add_argument("--config", type=str, default = '../configs/sdannce/fmr1.yaml')
     parser.add_argument('--num_classes', default=2, type=int, help='Number of output classes [2]')
+    
     parser.add_argument('--num_workers', default=8, type=int, help='number of workers used in dataloader [4]')
-
     parser.add_argument('--feats_size', default=192, type=int, help='Dimension of the feature size [512] resnet-50 1024') 
     parser.add_argument('--lr', default=0.0005, type=float, help='1e-3 Initial learning rate [0.0002]')
     parser.add_argument('--num_epochs', default=70, type=int, help='Number of total training epochs [40|200]')
@@ -201,8 +159,7 @@ def main():
     parser.add_argument('--if_interval', default=False, type=str2bool, help='if split the whole time series to intervals, each interval as an instance')
     parser.add_argument('--instance_len', default=5, type=int, help='the length of instance')
     parser.add_argument('--if_extract_feature', default=True, type=str2bool, help='if extract feature')
-    parser.add_argument('--subseq_len', default=3600, type=int, help='the length of sub sequence')
-
+    parser.add_argument('--subseq_len', default=3000, type=int, help='the length of sub sequence')
     args = parser.parse_args()
     gpu_ids = tuple(args.gpu_index)
     os.environ['CUDA_VISIBLE_DEVICES']=','.join(str(x) for x in gpu_ids)
@@ -251,9 +208,9 @@ def main():
             label_tr = []
             label_te = []
             for dataset_name in ["CP1A", "CP1B", "INH1", "INH2", "MOS1aD"]:
-                for mouse_name in mocap_fold_1[dataset_name]["train"]:
+                for mouse_name in split["fold_1"][dataset_name]["train"]:
                     label_tr = label_tr + data[dataset_name][mouse_name]["drug"]
-                for mouse_name in mocap_fold_1[dataset_name]["valid"]:
+                for mouse_name in split["fold_1"][dataset_name]["valid"]:
                     label_te = label_te + data[dataset_name][mouse_name]["drug"]
             mapping = {s: i for i, s in enumerate(set(label_tr))}
             print(f"Mapping of drug labels to integers: {mapping}")
@@ -277,39 +234,52 @@ def main():
             Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
 
         elif "sdannce" in args.dataset:
-            with open("/home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl", 'rb') as file:
+            with open(args.path_to_data_dir, 'rb') as file:
                 data = pickle.load(file)
             N = int(90000 / args.subseq_len) # number of sequences per sequence
+            
             if args.dataset == "sdannce":
-                Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/50/representations/mae_sdannce_tr.npy")[:, 25:4525]
-                Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/50/representations/mae_sdannce_val.npy")[:, 25:4525]
+                print("Loading SDANNCE dataset...")
+                Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/sdannce/fmr1/50/representations/mae_sdannce_tr.npy")[:, 25:3025]
+                Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/sdannce/fmr1/50/representations/mae_sdannce_val.npy")[:, 25:3025]
+
             elif args.dataset == "sdannce_kinematic":
                 Xtr = np.load("/home/rguo_hpc/myfolder/mocap/swav/kinematic/data/kinematic_tr.py.npy")
                 Xte = np.load("/home/rguo_hpc/myfolder/mocap/swav/kinematic/data/kinematic_val.py.npy")
                 Xtr = Xtr.reshape(-1, args.subseq_len, Xtr.shape[-1])
                 Xte = Xte.reshape(-1, args.subseq_len, Xtr.shape[-1])
-
+            
+            #X_tr, X_te = []
+            with open(args.config) as f:
+                split = yaml.safe_load(f)
             label_tr = []
             label_te = []
-            for mouse in fmr1_fold_1["train"]:
-                num_seq = len(data[mouse]["ratgen"])
-                gen  = str(data[mouse]["ratgen"][0])
+            for mouse in split["fold_1"]["train"]:
+                num_seq = len(data[mouse]['ratid'])
+                gen  = str(data[mouse]["ratgen"])
                 label_tr = label_tr + [gen for i in range(num_seq * N)]
-            for mouse in fmr1_fold_1["valid"]:
-                num_seq = len(data[mouse]["ratgen"])
-                gen = str(data[mouse]["ratgen"][0])
+                #m1 = data[mouse]['m1'].reshape(num_seq, 90000, -1)
+                #X_tr.append(m1.reshape(num_seq * N, args.subseq_len, -1))
+            for mouse in split["fold_1"]["valid"]:
+                num_seq = len(data[mouse]["ratid"])
+                gen = str(data[mouse]["ratgen"])
                 label_te = label_te + [gen for i in range(num_seq * N)]
+                #m1 = data[mouse]['m1'].reshape(num_seq, 90000, -1)
+                #X_te.append(m1.reshape(num_seq * N, args.subseq_len, -1))
+            #Xtr = np.concatenate(X_tr, axis=0)
+            #Xte = np.concatenate(X_te, axis=0)
             mapping = {s: i for i, s in enumerate(set(label_tr))}
             print(f"Mapping of ratgen labels to integers: {mapping}")
             ytr = [mapping[s] for s in label_tr]
             yte = [mapping[s] for s in label_te]
 
-        Xtr = torch.from_numpy(Xtr).float()#.permute(0,2,1).float() #(2802, 128, 1800) -> (2802, 1800, 128)
-        Xte = torch.from_numpy(Xte).float()#.permute(0,2,1).float()  
+        Xtr = torch.from_numpy(Xtr).float()
+        Xte = torch.from_numpy(Xte).float() 
         ytr = F.one_hot(torch.tensor(ytr)).float()
         yte = F.one_hot(torch.tensor(yte)).float()
         print(Xtr.shape, Xte.shape, ytr.shape, yte.shape)
-        trainset = TensorDataset(Xtr,ytr)
+        
+        trainset = TensorDataset(Xtr, ytr)
         testset = TensorDataset(Xte, yte)
         args.feats_size = Xtr.shape[-1]
         args.num_classes =  len(set(label_tr))
@@ -391,8 +361,8 @@ def main():
             best_balanced_score = current_balanced_score
             print(current_score)
             save_name = os.path.join(save_path, 'best_model.pth')
-            x = np.concatenate((x_train, x_test), axis=0)
-            np.save(os.path.join(args.save_dir, 'representations.npy'), x)
+            #x = np.concatenate((x_train, x_test), axis=0)
+            np.save(os.path.join(args.save_dir, 'representations.npy'), x_test) # save test only
 
             torch.save(milnet.state_dict(), save_name)
             logger.info('Best model saved at: ' + save_name)
@@ -403,12 +373,10 @@ def main():
     [avg_score, balanced_avg_score, f1_marco, f1_micro, p_marco, p_micro, r_marco, r_micro,] = results_best
     logger.info('\r Best  Results: accuracy: %.4f, bal. average score: %.4f, f1 marco: %.4f   f1 mirco: %.4f  p marco: %.4f   p mirco: %.4f r marco: %.4f   r mirco: %.4f ' % 
                   (avg_score, balanced_avg_score, f1_marco, f1_micro, p_marco, p_micro, r_marco, r_micro)) 
-    
         # if args.weight_div>0:
         #     if epoch%10==0:
         #         print('--------------------Clustering--------------------\n')
         #         cluster_idx_dict = pre_cluter(trainloader, milnet, criterion, optimizer, args,init= False)
         #         print('--------------------Clustering finished--------------------\n')
-
 if __name__ == '__main__':
     main()
