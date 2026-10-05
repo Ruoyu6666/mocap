@@ -92,14 +92,7 @@ class SkeletonMAE(nn.Module):
                 start = torch.randint(block_start, max_start + 1, (1,)).item()
                 frame_mask[b, start:start + this_seg_len] = True
         frame_mask_token = frame_mask.unsqueeze(-1).expand(N, TP, VP).reshape(N, L)  # [N, T*V]
-        """
-        # 2. NO joint-level masking. Need a per-token ordering to compact the surviving tokens and later restore them in-place
-        noise = torch.rand(N, L, device=device)
-        noise[frame_mask_token] += 2.0  # guarantees masked tokens sort after kept ones
-        ids_shuffle = torch.argsort(noise, dim=1)             # [N, T*V]
-        ids_restore = torch.argsort(ids_shuffle, dim=1)
-        num_keep_per_sample = (~frame_mask_token).sum(dim=1)  # [N], varies slightly with overlap 
-        """
+        
         # 2. JOINT-LEVEL masking
         joint_noise = torch.rand(N, L, device=device)
         force_remove = frame_mask_token.bool()

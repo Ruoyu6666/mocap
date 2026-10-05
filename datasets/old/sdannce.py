@@ -12,7 +12,7 @@ from torchvision import transforms
 from .transform import NormalizeConfig, _compute_root, center_skeleton, scale_normalize, _yaw_rotation_matrix, rotation_normalize, normalize_skeleton_sequence
 from .transform import ViewInvariant
 from .augmentations import GaussianNoise, Reflect, Rotation
-from .datasets import BasePoseTrajDataset
+from ..dataset import BasePoseTrajDataset
 """
 head (Snout, EarL, EarR, SpineF), 
 trunk (SpineM, SpineL, TailBase, ShoulderL, ShoulderR, HipL, HipR), 
@@ -21,9 +21,16 @@ forelimbs (KneeL, AnkleL, FootL, KneeR, AnkleR, FootR)
 The size of each animal was estimated by sampling the distance between two virtual markers (the snout and the tail base)
 
 NUM_KEYPOINTS = 23
-STR_BODY_PARTS = ["Snout", "EarL", "EarR",  "SpineF", "SpineM", "SpineL", "TailBase",
-                "ShoulderL", "ElbowL", "WristL", "HandL", "ShoulderR", "ElbowR", "WristR", "HandR", 
-                "HipL", "KneeL", "AnkleL", "FootL", "HipR", "KneeR", "AnkleR", "FootR",] 
+STR_BODY_PARTS = ["Snout", "EarL", "EarR",  
+                "SpineF", "SpineM", "SpineL", "TailBase",
+                "ShoulderL", 
+                "ElbowL", "WristL", "HandL", 
+                "ShoulderR", 
+                "ElbowR", "WristR", "HandR", 
+                "HipL", 
+                "KneeL", "AnkleL", "FootL", 
+                "HipR", 
+                "KneeR", "AnkleR", "FootR",] 
 # https://github.com/tqxli/sdannce/blob/master/dannce/engine/skeletons/utils.py
 """
 

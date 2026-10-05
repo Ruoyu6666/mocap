@@ -1,6 +1,7 @@
 ################
 ### original ###
 ################
+#---- fmr1 ----
 python trainers/skeletonMAE/pretrain.py --dim_feat 192 --decoder_dim_feat 256 \
  --depth 6 --decoder_depth 1 --num_frames 50 --num_joints 18 --patch_size 3 --t_patch_size 1 \
  --dataset sdannce --path_to_data_dir ../data/sdannce/data_fmr1.pkl  --lr 5e-5 \
@@ -13,45 +14,67 @@ python trainers/skeletonMAE/compute_representation.py --dim_feat 192 --depth 6 \
  --save_dir outputs/sdannce/fmr1/50 --model_path outputs/sdannce/fmr1/50/checkpoints/epoch_15.pth\
  --if_val True
 
+#---- cntnap2 ----
+python trainers/skeletonMAE/pretrain.py --dim_feat 192 --decoder_dim_feat 256 \
+ --depth 7 --decoder_depth 1 --num_frames 50 --dataset sdannce \
+ --path_to_data_dir ../data/sdannce/data_cntnap2.pkl  --lr 5e-5 \
+ --sliding_window 25 --batch_size 192 --epochs 20 --save_dir ./outputs/50/ >> cntnap2.txt
+
+python trainers/skeletonMAE/compute_representation.py --dim_feat 192 --depth 7 \
+ --num_frames 50 --dataset sdannce --path_to_data_dir ../data/sdannce/data_cntnap2.pkl \
+ --sliding_window 10 --batch_size 192 --epochs 20 --save_dir ./outputs/sdannce/cntnap2 \
+ --model_path outputs/sdannce/cntnap2/checkpoints/mae_checkpoint_epoch_15.pth \
+ --config ./configs/sdannce/cntnap2.yaml --if_val True 
 
 #---- chd8 ----
+# Try 8 layers
+python trainers/skeletonMAE/pretrain.py --dim_feat 192 --decoder_dim_feat 192 \
+ --depth 8 --decoder_depth 2 --num_frames 50 --num_joints 18 \
+ --dataset sdannce --path_to_data_dir ../data/sdannce/data_chd8.pkl  --lr 5e-5 \
+ --sliding_window 25 --batch_size 256 --epochs 20 --save_dir ./outputs/50/ >> chd8.txt
+
+python trainers/skeletonMAE/compute_representation.py --dim_feat 192 --depth 8 \
+ --num_frames 50 --num_joints 18 --dataset sdannce \
+ --path_to_data_dir ../data/sdannce/data_chd8.pkl --sliding_window 10 --batch_size 256 \
+ --save_dir outputs/50 --model_path outputs/50/checkpoints/mae_checkpoint_epoch_15.pth \
+ --config ./configs/sdannce/chd8.yaml --if_val True 
+
+
+# let's try 7 layers, and smaller batch size
 python trainers/skeletonMAE/pretrain.py --dim_feat 192 --decoder_dim_feat 192 \
  --depth 7 --decoder_depth 2 --num_frames 50 --num_joints 18 --patch_size 3 --t_patch_size 1 \
  --dataset sdannce --path_to_data_dir ../data/sdannce/data_chd8.pkl  --lr 5e-5 \
- --sliding_window 25 --batch_size 192 --epochs 20 --save_dir ./outputs/50/
+ --sliding_window 25 --batch_size 192 --epochs 20 --save_dir ./outputs/50/ >> chd8.txt
 
-# sample by 2, each sequence len 2280
+# sample by 2, each sequence len 2280 (nah not a good idea)
 --num_frames 30 
-# Try 8 layers
-
-
-python trainers/skeletonMAE/compute_representation.py --dim_feat 192 --depth 7 \
- --num_frames 30 --num_joints 18 --patch_size 3 --t_patch_size 1 --dataset sdannce \
- --path_to_data_dir ../data/sdannce/data_chd8.pkl --sliding_window 15 --batch_size 256 \
- --save_dir outputs/30 --model_path outputs/30/checkpoints/mae_checkpoint_epoch_15.pth \
- --config ./configs/sdannce/chd8.yaml --if_val True 
-
 
 ###########
 #### mil ##
 ###########
+# ----- fmr1 ----
 python main.py --path_to_data_dir /home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl  \
---config ../configs/sdannce/fmr1.yaml --if_interval True --instance_len 5  \
---if_extract_feature False --subseq_len 3000 --lr 0.0002
+ --config ../configs/sdannce/fmr1.yaml --if_interval True --instance_len 5  \
+ --if_extract_feature False --subseq_len 3000 --lr 0.0002
+
+# ----- cntnap2 ----
+python main.py --path_to_data_dir /home/rguo_hpc/myfolder/data/sdannce/data_cntnap2.pkl \
+ --config ../configs/sdannce/cntnap2.yaml --if_interval True --instance_len 5  \
+ --if_extract_feature False --subseq_len 3000  --lr 0.0001
 
 
-python main.py --path_to_data_dir /home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl \
- --config ../configs/sdannce/fmr1.yaml --if_interval True --instance_len 5  --batchsize 32  --if_extract_feature False 
- --lr 0.0001 
---if_extract_feature False 
+# ----- chd8 ----
+python main.py --path_to_data_dir /home/rguo_hpc/myfolder/data/sdannce/data_chd8.pkl \
+ --config ../configs/sdannce/chd8.yaml --if_interval True --instance_len 5  \
+ --if_extract_feature False --subseq_len 3000
+
 --batchsize 32
+--if_extract_feature False 
 --weight_decay 0.001
 --feats_size 256
 --embed 256
 
 python main.py --dataset sdannce_kinematic --subseq_len 4500 --if_interval True --instance_len 3
-
-
 
 
 

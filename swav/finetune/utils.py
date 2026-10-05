@@ -141,8 +141,7 @@ def build_optimizer(model: SwAVSkeletonModel, lr: float = 1e-4, weight_decay: fl
 
 
 @torch.no_grad()
-def compute_new_representations_overlapping(model, dataloader, device: str = "cuda",
-                                which: str = "projection", t_patch_size: int = 1,):
+def compute_new_representations_overlapping(model, dataloader, device, which: str = "projection", t_patch_size: int = 1,):
     """
     Differences from your original code, both defensive fixes:
       - no torch.squeeze() before indexing per-item latents — squeeze() would also collapse the batch dimension 
@@ -200,18 +199,13 @@ def compute_new_representations_overlapping(model, dataloader, device: str = "cu
 
 
 
-def swav_loss_multiview(
-    scores_list,
-    sinkhorn_eps: float = 0.05,
-    sinkhorn_iters: int = 3,
-    temperature: float = 0.1,
-):
+def swav_loss_multiview(scores_list, sinkhorn_eps: float = 0.05,
+                        sinkhorn_iters: int = 3, temperature: float = 0.1,):
     """
-    Generalization of swav_loss to V >= 2 views. Every ordered pair of
-    distinct views (v, v') contributes a swapped-prediction term: view v's
-    predicted distribution should match view v''s Sinkhorn code. Averaged
-    over all V*(V-1) ordered pairs. For V=2 this is numerically identical to
-    swav_loss.
+    Generalization of swav_loss to V >= 2 views. Every ordered pair of distinct views 
+    (v, v') contributes a swapped-prediction term: view v's predicted distribution 
+    should match view v''s Sinkhorn code. Averaged over all V*(V-1) ordered pairs. 
+    For V=2 this is numerically identical to swav_loss.
  
     scores_list: list of V tensors, each (B, K) raw prototype logits.
     """
@@ -254,12 +248,9 @@ def pool_sequence(z_seq: torch.Tensor, method: str = "mean") -> torch.Tensor:
 
 def align_labels_to_tokens(labels: torch.Tensor, T_tokens: int) -> torch.Tensor:
     """
-    labels: (B, T_raw) integer frame-level class labels (use e.g. -100 for
-    unlabeled frames, matching F.cross_entropy's default ignore_index).
- 
-    If the encoder temporally patches frames (e.g. t_patch_size > 1), its output T_tokens < T_raw, 
-    so labels need to be downsampled to match. Uses an np.linspace nearest-frame scheme, so token t's label 
-    comes from the same raw frame a same-length clip-subsampling view would have picked for that position.
+    labels: (B, T_raw) integer frame-level class labels (use e.g. -100 for unlabeled frames, matching F.cross_entropy's default ignore_index).
+    When t_patch_size > 1, output T_tokens < T_raw, labels need to be downsampled to match. 
+    Token t's label comes from the same raw frame a same-length clip-subsampling view would have picked for that position.
  
     Returns (B, T_tokens).
     """
@@ -293,7 +284,6 @@ def compute_new_representations_clip(model: SwAVSkeletonModel, dataloader, devic
     frame_selection:
       "all"    - return every frame in every clip (REQUIRED if the model was trained with the binned pairing scheme).
       "center" - one row per clip, taken at that clip's center_idx. Only valid if the dataloader yields (clip, center_idx) batches 
- 
     return_indices: if True, also returns (clip_ids, frame_ids), each an (N,) long tensor giving which original clip / frame 
     each output row came from — useful for stitching results back into UMAP/behavioral-map analyses grouped by clip or by absolute frame position.
  
@@ -325,9 +315,8 @@ def compute_new_representations_clip(model: SwAVSkeletonModel, dataloader, devic
                 fid = torch.arange(T, device=device).unsqueeze(0).expand(B, T).reshape(-1)
                 clip_id_out.append(cid.cpu())
                 frame_id_out.append(fid.cpu())
-        else:  # "center"
-            assert center_idx is not None, ("frame_selection='center' requires the dataloader to yield (clip, center_idx) batches — "
-                                            "use frame_selection='all' for models trained with the binned pairing scheme")
+        else:
+            assert center_idx is not None, ("frame_selection='center' requires the dataloader to yield (clip, center_idx) batches")
             center_idx = center_idx.to(device)
             arange_b = torch.arange(B, device=device)
             z = z_seq[arange_b, center_idx]  # (B, D)

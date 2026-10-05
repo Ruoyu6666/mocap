@@ -167,6 +167,7 @@ class TimeMIL(nn.Module):
 
         B, seq_len, D = x.shape
         global_token = x.mean(dim=1)#[0]
+        
         # Create class token and concatenate with input
         cls_tokens = self.cls_token.expand(B, -1, -1)    #B * 1 * d
         x = torch.cat((cls_tokens, x), dim=1) #B * (N+1) * d

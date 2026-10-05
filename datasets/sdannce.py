@@ -4,15 +4,10 @@ import pickle
 from pathlib import Path
 import numpy as np
 import torch
-from torchvision import transforms
 
-from .transform import NormalizeConfig,  rotation_normalize, ViewInvariant
+from .transform import NormalizeConfig,  ViewInvariant
 from .augmentations import Augmentations, _resample_time
 from .dataset import BasePoseTrajDataset
-
-
-# Noramlize Config
-NormalizeConfig_sdannce = NormalizeConfig(left_shoulder=6, right_shoulder=9, left_hip=12, right_hip =15)
 
 
 class SdannceDataset(BasePoseTrajDataset):
@@ -24,14 +19,13 @@ class SdannceDataset(BasePoseTrajDataset):
                       "HipL", "KneeL", "AnkleL", 
                       "HipR", "KneeR", "AnkleR"] 
     NUM_INDIVIDUALS = 1
-    SAMPLE_LEN = 4500
+    SAMPLE_LEN = 3000
     KPTS_DIMENSIONS = 3
     KEYFRAME_SHAPE = (NUM_INDIVIDUALS, NUM_KEYPOINTS, KPTS_DIMENSIONS)
     BODY_PART_2_INDEX = {w: i for i, w in enumerate(STR_BODY_PARTS)}
-    Normalize_Config = NormalizeConfig_sdannce
+    NORMALIZE_CONFIG = NormalizeConfig(left_shoulder=6, right_shoulder=9, left_hip=12, right_hip=15)
     
-    def __init__(self, 
-                mode: str, 
+    def __init__(self,
                 path_to_data_dir: Path,
                 sampling_rate: int = 1,
                 num_frames: int = 300,
@@ -47,10 +41,10 @@ class SdannceDataset(BasePoseTrajDataset):
         
         super().__init__(path_to_data_dir, sampling_rate, num_frames, sliding_window, interp_holes, **kwargs)
 
-        self.mode = mode
         self.view_invariant = view_invariant
         if view_invariant:
-            self.vi = ViewInvariant(index_frame = num_frames//2, left_idx = self.Normalize_Config.left_hip, right_idx = self.Normalize_Config.right_hip)
+            self.vi = ViewInvariant(index_frame=num_frames//2, left_idx = self.NORMALIZE_CONFIG.left_hip, 
+                                    right_idx = self.NORMALIZE_CONFIG.right_hip)
         if augmentations:
             self.augmentations = Augmentations()
         self.normalize = normalize
@@ -67,22 +61,11 @@ class SdannceDataset(BasePoseTrajDataset):
             result = pickle.load(file)
         L = self.SAMPLE_LEN
         N = int(90000 /self.SAMPLE_LEN) # number of sequences per huge sequence
-        for mouse in result.keys(): # for each mouse
-            num_seq = len(result[mouse]["ratgen"])
-            ratgen  = int(result[mouse]["ratgen"][0])
-            result[mouse]["ratgen"] = np.full((num_seq * N,), ratgen)
 
-            result[mouse]["m1"] = np.array(result[mouse]["m1"])     # (3, 90000, 3, 23)
-            result[mouse]["m1"] = result[mouse]["m1"].transpose(0, 1, 3, 2).reshape(-1, L, 23, 3)
-            result[mouse]["m1"] = np.delete(result[mouse]["m1"], [5, 10, 14, 18, 22], axis=-2)
-            
-            result[mouse]["llac"] = np.array(result[mouse]["llac"]) # (3, 90000, 1)
-            result[mouse]["llac"] = np.squeeze(result[mouse]["llac"], axis=2)
-            result[mouse]["llac"] = result[mouse]["llac"].reshape(-1, L,)
-            
-            result[mouse]["hlac"] = np.array(result[mouse]["hlac"]) # (3, 90000, 1)
-            result[mouse]["hlac"] = np.squeeze(result[mouse]["hlac"], axis=2)
-            result[mouse]["hlac"] = result[mouse]["hlac"].reshape(-1, L,)
+        for mouse in result.keys():     # for each mouse
+            result[mouse]["m1"] = result[mouse]["m1"].reshape(-1, L, self.NUM_KEYPOINTS, 3)
+            #result[mouse]["llac"] = result[mouse]["llac"].reshape(-1, L,)
+            result[mouse]["hlac"] = result[mouse]["hlac"].reshape(-1, L,)     
         
         self.raw_data = result
         del result
@@ -90,11 +73,10 @@ class SdannceDataset(BasePoseTrajDataset):
 
     def preprocess(self):
         seq_keypoints = []
+        seq_labels = []
         keypoints_ids = []
         sub_seq_length = self.max_keypoints_len
         half_len = sub_seq_length// 2
-
-        num_sequences_total = 0
         if self.split is not None: # only take train/test data
             if self.if_val:
                 mice = self.split["valid"]
@@ -102,18 +84,27 @@ class SdannceDataset(BasePoseTrajDataset):
                 mice = self.split["train"]
         else: 
             mice = self.raw_data.keys() # if self.split is None, use data of all mice
+
+        num_sequences_total = 0
         for mouse_name in mice: # Iterate over mice
             sequences = self.raw_data[mouse_name]["m1"] #(num_sequences, L, 10, 3)
+            hlac_labels = self.raw_data[mouse_name]["hlac"]
             num_sequences = len(sequences)
             for i in range(num_sequences_total, num_sequences_total + num_sequences): # Iterate over sequences of one mouse
                 vec_seq = sequences[i-num_sequences_total]
                 pad_vec = np.pad(vec_seq, ((half_len, sub_seq_length - half_len), (0, 0), (0, 0)), mode="edge", ) # Pads the beginning and end of the sequence with duplicate frames
                 seq_keypoints.append(pad_vec)
                 keypoints_ids.extend([(i, sub_i) for sub_i in np.arange(0, len(pad_vec) - sub_seq_length + 1, self.sliding_window)])
+
+                labels = hlac_labels[i-num_sequences_total]
+                pad_labels = np.pad(labels, (half_len, sub_seq_length - half_len), mode="edge", )
+                seq_labels.append(pad_labels)
             num_sequences_total += num_sequences
         
         self.num_sequences = num_sequences_total
-        self.seq_keypoints = np.array(seq_keypoints, dtype=np.float32) # numpy array: [num_sequences, T/5 + pad_vect, 10, 3]
+        self.seq_keypoints = np.array(seq_keypoints, dtype=np.float32)
+        print(self.seq_keypoints.shape)
+        self.seq_labels = np.array(seq_labels)
         self.keypoints_ids = keypoints_ids
         print("Total number of sequences",self.num_sequences, "Total number of subsequences",len(self.keypoints_ids))
 
@@ -121,12 +112,13 @@ class SdannceDataset(BasePoseTrajDataset):
 
     def featurise_keypoints(self, keypoints):
         seq = keypoints.reshape(-1, self.NUM_KEYPOINTS, 3)
+        #padded = np.pad(seq, ((2, 2), (0, 0), (0, 0)), mode="edge")
+        #seq = (padded[:-4] + padded[1:-3] + padded[2:-2] + padded[3:-1] + padded[4:]) / 5.0
         if self.interp_holes:
             seq = self.fill_holes(seq)
         if self.view_invariant:         # View-invariant transformation
             seq, _, _  = self.vi(seq, x_supp=(),)
         if self.augmentations:       # Augment
-            #seq = _resample_time(seq[::5], target_len = self.max_keypoints_len) # temporal downsampling then resamplings
             seq = self.augmentations(seq)
         if self.normalize:           # Normalize
             seq, _, _ = self.mocap_normalize(seq)
@@ -170,7 +162,6 @@ class SdannceDataset(BasePoseTrajDataset):
                 for i in range(first_valid, self.max_keypoints_len): # fill with last valid value
                     if not valid[i]:
                         filled[i, j, c] = filled[i-1, j, c]
-        
         return filled
     
 
@@ -179,7 +170,6 @@ class SdannceDataset(BasePoseTrajDataset):
         feats = self.featurise_keypoints(sequence) # [300, 1, 23, 3]
         if self.model == "behaveMAE":
             feats = feats.reshape(self.max_keypoints_len, self.NUM_INDIVIDUALS, -1) # [300, num_ind, num_joints* 2d] flatten for behaveMAE
-
         return feats
     
 
@@ -187,4 +177,6 @@ class SdannceDataset(BasePoseTrajDataset):
         subseq_ix = self.keypoints_ids[idx]
         subsequence = self.seq_keypoints[subseq_ix[0], subseq_ix[1] : subseq_ix[1] + self.max_keypoints_len]
         inputs = self.prepare_subsequence_sample(subsequence)
-        return inputs, subseq_ix
+        labels = self.seq_labels[subseq_ix[0], subseq_ix[1] : subseq_ix[1] + self.max_keypoints_len]
+        #print("inputs", inputs, "labels", labels)
+        return inputs, labels

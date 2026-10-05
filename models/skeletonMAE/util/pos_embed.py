@@ -7,9 +7,7 @@
 # --------------------------------------------------------
 
 import numpy as np
-
 import torch
-
 # --------------------------------------------------------
 # 2D sine-cosine position embedding
 # References:
@@ -34,15 +32,17 @@ def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False):
     return pos_embed
 
 
+
+
 def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
     assert embed_dim % 2 == 0
-
     # use half of dimensions to encode grid_h
     emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
     emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
 
     emb = np.concatenate([emb_h, emb_w], axis=1) # (H*W, D)
     return emb
+
 
 
 def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
@@ -66,6 +66,24 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     return emb
 
 
+
+
+def interpolate_temp_embed(model, checkpoint_model):
+    if 'temp_embed' in checkpoint_model:
+        pos_embed_checkpoint = checkpoint_model['temp_embed'] # 1, num_frames//t_patch_size, 1, dim_feat
+        t_grid_size_checkpoint = pos_embed_checkpoint.shape[1]
+        t_grid_size_model = model.joints_embed.t_grid_size
+
+        if t_grid_size_model != t_grid_size_checkpoint:
+            print("Temporal position interpolate from %d to %d" % (t_grid_size_checkpoint, t_grid_size_model))
+            pos_tokens = pos_embed_checkpoint
+            pos_tokens = pos_tokens.permute(0, 3, 1, 2)
+            pos_tokens = torch.nn.functional.interpolate(
+                pos_tokens, size=(t_grid_size_model, 1), mode='bicubic', align_corners=False
+                )
+            pos_tokens = pos_tokens.permute(0, 2, 3, 1)
+            pos_embed_model = pos_tokens
+            checkpoint_model['temp_embed'] = pos_embed_model
 # --------------------------------------------------------
 # Interpolate position embeddings for high-resolution
 # References:
@@ -118,19 +136,4 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 #             checkpoint_model['temp_embed'] = pos_embed_model
 
 
-def interpolate_temp_embed(model, checkpoint_model):
-    if 'temp_embed' in checkpoint_model:
-        pos_embed_checkpoint = checkpoint_model['temp_embed']
-        t_grid_size_checkpoint = pos_embed_checkpoint.shape[1]
-        t_grid_size_model = model.joints_embed.t_grid_size
 
-        if t_grid_size_model != t_grid_size_checkpoint:
-            print("Temporal position interpolate from %d to %d" % (t_grid_size_checkpoint, t_grid_size_model))
-            pos_tokens = pos_embed_checkpoint
-            pos_tokens = pos_tokens.permute(0, 3, 1, 2)
-            pos_tokens = torch.nn.functional.interpolate(
-                pos_tokens, size=(t_grid_size_model, 1), mode='bicubic', align_corners=False
-                )
-            pos_tokens = pos_tokens.permute(0, 2, 3, 1)
-            pos_embed_model = pos_tokens
-            checkpoint_model['temp_embed'] = pos_embed_model

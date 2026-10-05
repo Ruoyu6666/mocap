@@ -215,8 +215,7 @@ class SkeletonMAE(nn.Module):
         pred = self.forward_decoder(latent, ids_restore)                # [NM, TP * VP, C] = [3B, 1200, 2*3(t_patch_size)]
         loss = self.forward_loss(x, pred, mask) 
         return loss, pred, mask # pred.shape, mask.shape: [B, TP * VP, t_patch_size * patch_size * 3] , [B, TP * VP]
-
-
+    
     """
     # 1. completely random masking
     def random_masking(self, x, mask_ratio):
@@ -235,7 +234,8 @@ class SkeletonMAE(nn.Module):
         mask[~self.valid_patch_mask] = 1.0
         ids_invalid = (~self.valid_patch_mask).nonzero(as_tuple=False) # each row is a (batch_idx, patch_idx)
         return x_masked, mask, ids_restore, ids_keep
-
+    """
+    """
     # 2. First mask entire frames may be more effective to learn temporal dynamics, then mask joints to learn spatial correlations
     def random_masking(self, x, frame_mask_ratio=0.5, joint_mask_ratio=0.5):
         N, L, D = x.shape
