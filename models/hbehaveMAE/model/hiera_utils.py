@@ -30,12 +30,8 @@ def pretrained_model(checkpoints: Dict[str, str], default: str = None) -> Callab
     """Loads a Hiera model from a pretrained source (if pretrained=True). Use "checkpoint" to specify the checkpoint."""
 
     def inner(model_func: Callable) -> Callable:
-        def model_def(
-            pretrained: bool = False,
-            checkpoint: str = default,
-            strict: bool = True,
-            **kwdargs,
-        ) -> nn.Module:
+        def model_def(pretrained: bool = False, checkpoint: str = default,
+                      strict: bool = True, **kwdargs,) -> nn.Module:
             if pretrained:
                 if checkpoints is None:
                     raise RuntimeError("This model currently doesn't have pretrained weights available.")
@@ -71,9 +67,7 @@ def pretrained_model(checkpoints: Dict[str, str], default: str = None) -> Callab
                     strict = False
 
                 model.load_state_dict(state_dict["model_state"], strict=strict)
-
             return model
-
         return model_def
 
     return inner
@@ -103,9 +97,8 @@ def get_resized_mask(target_size: torch.Size, mask: torch.Tensor) -> torch.Tenso
     return mask
 
 
-def do_masked_conv(
-    x: torch.Tensor, conv: nn.Module, mask: Optional[torch.Tensor] = None
-) -> torch.Tensor:
+def do_masked_conv(x: torch.Tensor, conv: nn.Module, mask: Optional[torch.Tensor] = None
+                    ) -> torch.Tensor:
     """
     Zero-out the masked regions of the input before conv.
     Prevents leakage of masked regions when using overlapping kernels.
@@ -147,9 +140,8 @@ def undo_windowing(x: torch.Tensor, shape: List[int], mu_shape: List[int]) -> to
 
 class Unroll(nn.Module):
     """
-    Reorders the tokens such that patches are contiguous in memory.
-    E.g., given [B, (H, W), C] and stride of (Sy, Sx), this will re-order the tokens as
-                           [B, (Sy, Sx, H // Sy, W // Sx), C]
+    Reorders the tokens such that patches are contiguous in memory.E.g., given [B, (H, W), C] and stride of (Sy, Sx), 
+    this will re-order the tokens as [B, (Sy, Sx, H // Sy, W // Sx), C]
 
     This allows operations like Max2d to be computed as x.view(B, Sx*Sy, -1, C).max(dim=1).
     Not only is this faster, but it also makes it easy to support inputs of arbitrary
@@ -165,15 +157,12 @@ class Unroll(nn.Module):
     The last block of the network is fine though, since by then the strides are all consumed.
     """
 
-    def __init__(
-        self,
-        input_size: Tuple[int, ...],
-        patch_stride: Tuple[int, ...],
-        unroll_schedule: List[Tuple[int, ...]],
-    ):
+    def __init__(self,input_size: Tuple[int, ...],patch_stride: Tuple[int, ...],
+                 unroll_schedule: List[Tuple[int, ...]],):
         super().__init__()
         self.size = [i // s for i, s in zip(input_size, patch_stride)]
         self.schedule = unroll_schedule
+
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -212,7 +201,6 @@ class Reroll(nn.Module):
     """
     Undos the "unroll" operation so that you can use intermediate features.
     """
-
     def __init__(
         self,
         input_size: Tuple[int, ...],
@@ -260,8 +248,7 @@ class Reroll(nn.Module):
             L = len(x.shape)
             permute = (
                 [0, 1 + D]
-                + sum([list(p) for p in zip(range(1, 1 + D), range(1 + D + 1, L - 1))],
-                      [],)
+                + sum([list(p) for p in zip(range(1, 1 + D), range(1 + D + 1, L - 1))], [],)
                 + [L - 1]
             )
             x = x.permute(permute)

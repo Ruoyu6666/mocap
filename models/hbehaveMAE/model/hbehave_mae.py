@@ -73,8 +73,7 @@ class HBehaveMAE(GeneralizedHiera):
                             self.projections[ix].out_features,
                             self.projections[-1].out_features,
                             kernel_size=kernel,
-                            stride=kernel,)
-                            )
+                            stride=kernel,))
         self.multi_scale_fusion_heads.append(nn.Identity())  # final stage, no transform
 
         # --------------------------------------------------------------------------
@@ -201,10 +200,8 @@ class HBehaveMAE(GeneralizedHiera):
         x_dec = ~mask * mask_tokens + mask * x_dec
 
         # Get back spatial order
-        x = undo_windowing(x_dec, self.tokens_spatial_shape_final,
-                                self.mask_unit_spatial_shape_final,)
-        mask = undo_windowing(mask[..., 0:1], self.tokens_spatial_shape_final,
-                                            self.mask_unit_spatial_shape_final,)
+        x = undo_windowing(x_dec, self.tokens_spatial_shape_final, self.mask_unit_spatial_shape_final,)
+        mask = undo_windowing(mask[..., 0:1], self.tokens_spatial_shape_final, self.mask_unit_spatial_shape_final,)
         # Flatten
         x = x.reshape(x.shape[0], -1, x.shape[-1]) # 1st stage: [128, 100, 128], 2nd [128, 20, 128]
         mask = mask.view(x.shape[0], -1)

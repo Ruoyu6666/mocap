@@ -25,8 +25,7 @@ class SdannceDataset(BasePoseTrajDataset):
     BODY_PART_2_INDEX = {w: i for i, w in enumerate(STR_BODY_PARTS)}
     NORMALIZE_CONFIG = NormalizeConfig(left_shoulder=6, right_shoulder=9, left_hip=12, right_hip=15)
     
-    def __init__(self,
-                path_to_data_dir: Path,
+    def __init__(self, path_to_data_dir: Path,
                 sampling_rate: int = 1,
                 num_frames: int = 300,
                 sliding_window: int = 100,
@@ -43,7 +42,8 @@ class SdannceDataset(BasePoseTrajDataset):
 
         self.view_invariant = view_invariant
         if view_invariant:
-            self.vi = ViewInvariant(index_frame=num_frames//2, left_idx = self.NORMALIZE_CONFIG.left_hip, 
+            self.vi = ViewInvariant(index_frame=num_frames//2, 
+                                    left_idx = self.NORMALIZE_CONFIG.left_hip, 
                                     right_idx = self.NORMALIZE_CONFIG.right_hip)
         if augmentations:
             self.augmentations = Augmentations()
@@ -112,7 +112,8 @@ class SdannceDataset(BasePoseTrajDataset):
 
     def featurise_keypoints(self, keypoints):
         seq = keypoints.reshape(-1, self.NUM_KEYPOINTS, 3)
-        #padded = np.pad(seq, ((2, 2), (0, 0), (0, 0)), mode="edge")
+        # smooth the sequence with a 5-frame moving average filter to reduce noise
+        # padded = np.pad(seq, ((2, 2), (0, 0), (0, 0)), mode="edge")
         #seq = (padded[:-4] + padded[1:-3] + padded[2:-2] + padded[3:-1] + padded[4:]) / 5.0
         if self.interp_holes:
             seq = self.fill_holes(seq)
@@ -178,5 +179,4 @@ class SdannceDataset(BasePoseTrajDataset):
         subsequence = self.seq_keypoints[subseq_ix[0], subseq_ix[1] : subseq_ix[1] + self.max_keypoints_len]
         inputs = self.prepare_subsequence_sample(subsequence)
         labels = self.seq_labels[subseq_ix[0], subseq_ix[1] : subseq_ix[1] + self.max_keypoints_len]
-        #print("inputs", inputs, "labels", labels)
-        return inputs, labels
+        return inputs, labels # torch.Size([50, 18, 3]) (50,)

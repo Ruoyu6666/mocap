@@ -9,7 +9,7 @@ import torch
 from torchvision import transforms
 
 from .transform import ViewInvariant
-from .augmentations_old import GaussianNoise, Reflect, Rotation
+from .augmentations import GaussianNoise, Reflect, Rotation
 from .dataset import BasePoseTrajDataset
 
 

@@ -1,14 +1,13 @@
 ##### With RoPe #####
 
 #----------------
+#--- sdannce ---
+#----------------
+
+
 #---  chd8 ---
-#----------------
 
-
-
-#----------------
 #---  cntnap2 ---
-#----------------
 python main.py --mode finetune_last_n --unfreeze_n 2 --batch_size 192\
  --encoder_ckpt ../../outputs/sdannce/cntnap2/checkpoints/mae_checkpoint_epoch_5.pth \
  --path_to_data_dir /home/rguo_hpc/myfolder/data/sdannce/data_cntnap2.pkl \
@@ -21,12 +20,7 @@ python main.py --mode finetune_last_n --unfreeze_n 2 --batch_size 192 \
  --config ../../configs/sdannce/cntnap2.yaml --shuffle False --sliding_window 10
  
 
-
-#-------------
 #---  fmr1 ---
-#-------------
-#--- original ---
-#----------------
 python main.py --mode finetune_last_n --batch_size 128 \
  --encoder_ckpt ../../outputs/sdannce/fmr1/50/RoPE/mae_checkpoint_epoch_10.pth
 # --sliding_window 25

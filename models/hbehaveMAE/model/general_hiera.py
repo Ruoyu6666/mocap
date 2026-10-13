@@ -16,7 +16,6 @@ class MaskUnitAttention(nn.Module):
     Computes either Mask Unit or Global Attention. Also is able to perform q pooling.
     Note: this assumes the tokens have already been flattened and unrolled into mask units. See `Unroll` for more details.
     """
-
     def __init__(self, dim: int, dim_out: int, heads: int, q_stride: int = 1, 
                  window_size: int = 0, use_mask_unit_attn: bool = False,):
         """
@@ -81,7 +80,6 @@ class HieraBlock(nn.Module):
                  use_mask_unit_attn: bool = False,):
         
         super().__init__()
-
         self.dim = dim
         self.dim_out = dim_out
 
@@ -280,6 +278,7 @@ class GeneralizedHiera(nn.Module):
         self.head.projection.weight.data.mul_(head_init_scale)
         self.head.projection.bias.data.mul_(head_init_scale)
 
+
     def _init_weights(self, m, init_bias=0.02):
         if isinstance(m, (nn.Linear, nn.Conv1d, nn.Conv2d, nn.Conv3d)):
             nn.init.trunc_normal_(m.weight, std=0.02)
@@ -295,6 +294,7 @@ class GeneralizedHiera(nn.Module):
             return ["pos_embed_spatial", "pos_embed_temporal"]
         else:
             return ["pos_embed"]
+
 
     def get_random_mask(self, x: torch.Tensor, mask_ratio: float) -> torch.Tensor:
         """Generates a random mask, mask_ratio fraction are dropped. 1 is *keep*, 0 is *remove*. Useful for MAE, FLIP, etc."""
@@ -355,5 +355,4 @@ class GeneralizedHiera(nn.Module):
 
         if return_intermediates:
             return x, intermediates
-
         return x
