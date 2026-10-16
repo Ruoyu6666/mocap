@@ -17,8 +17,8 @@ from models.skeletonMAE.util.pos_embed import interpolate_temp_embed
 
 from models.skeletonMAE.model.encoder_rope import STTFEncoder
 from datasets.sdannce import SdannceDataset
+from datasets.mabe_mice import MABeMouseDataset
 from datasets.eyetrack import EyetrackDataset
-
 
 
 def get_args_parser():
@@ -55,8 +55,9 @@ def get_args_parser():
     parser.add_argument("--view_invariant", default=True, type=str2bool)
     parser.add_argument("--data_augment", default=False, type=str2bool)
     parser.add_argument("--normalize", default=True, type=str2bool)
-    #parser.add_argument("--centeralign", action="store_true")       # for mabe mice dataset
-    #parser.add_argument("--include_testdata", action="store_true")  # for mabe mice dataset
+    parser.add_argument("--centeralign", default=False, type=str2bool)  # for mabe mice dataset
+    parser.add_argument("--include_testdata", default=False, type=str2bool)  # for mabe mice dataset
+    parser.add_argument("--mode", default="train", type=str)
 
     parser.add_argument("--num_workers", default=8, type=int)
     parser.add_argument("--pin_mem", action="store_true", help="Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.",)
@@ -75,17 +76,16 @@ def get_args_parser():
     parser.add_argument("--fast_inference",default=False, type=str2bool)
     return parser.parse_args()
 
-
+"""
 def make_taper_window(latent_len, edge_frac=0.25):
-    """
-    Hann-style taper: weight ~0 at edges, ~1 in the middle. edge_frac controls how much of the window is ramp vs flat top.
-    """
+    #Hann-style taper: weight ~0 at edges, ~1 in the middle. edge_frac controls how much of the window is ramp vs flat top.    
     ramp_len = max(1, int(latent_len * edge_frac))
     window = torch.ones(latent_len)
     ramp = 0.5 * (1 - torch.cos(torch.linspace(0, torch.pi, ramp_len)))
     window[:ramp_len] = ramp
     window[-ramp_len:] = ramp.flip(0)
     return window  # shape (latent_len,)
+"""
 
 
 
@@ -97,34 +97,24 @@ def compute_representations(model, data_loader, device, args):
     num_sequences = data_loader.dataset.num_sequences
     full_len = data_loader.dataset.seq_keypoints.shape[1] # length of the full sequence
     
-    if args.fast_inference:
-        with torch.no_grad():
-            for i, (x, _)  in enumerate(tqdm(data_loader)):
-                x = x.to(device)
-                latent = model(x)      # (N, T, C)
-                all_representations.append(torch.squeeze(latent).cpu().numpy())
-                if (i + 1) % args.log_interval == 0:
-                    print(f"Processed {i+1}/{len(data_loader)} batches.")
-        all_representations = np.concatenate(all_representations, axis=0)
-        all_representations = all_representations.reshape(num_sequences, -1, args.dim_feat) # (N, T, C)
-    else:
-        repr_sum = torch.zeros(num_sequences, int(full_len/args.t_patch_size), args.dim_feat)
-        count_sum = torch.zeros(num_sequences, int(full_len/args.t_patch_size), 1)
+    repr_sum = torch.zeros(num_sequences, full_len, args.dim_feat)
+    count_sum = torch.zeros(num_sequences, full_len, 1)
 
-        with torch.no_grad():
-            for i, (x, _)  in enumerate(tqdm(data_loader)): # i, index of the batch; x, batch of subsequences;
-                x = x.to(device) # [B, 300, 1, 10, 3]
-                latent = model(x)
-                latent = torch.squeeze(latent).cpu().detach().numpy()
-                keypoints_id = data_loader.dataset.keypoints_ids[i*args.batch_size:(i+1)*args.batch_size] # list of tuples (seq_id, start_idx) for each subsequence in the batch
-                for j in range(len(keypoints_id)):
-                    seq_id, start_idx = keypoints_id[j]
-                    start_idx = int(start_idx/args.t_patch_size) # convert from frame index to index in the representation
-                    sub_latent = latent[j]
-                    repr_sum[seq_id, start_idx:start_idx+latent_len]  += torch.from_numpy(sub_latent) # weighted_latent
-                    count_sum[seq_id, start_idx:start_idx+latent_len] += 1                            # taper_tensor
+    with torch.no_grad():
+        for i, (x, _)  in enumerate(tqdm(data_loader)): # i, index of the batch; x, batch of subsequences;
+            x = x.to(device) # [B, 300, 1, 10, 3]
+            latent = model(x)
+            latent = torch.squeeze(latent).cpu().detach().numpy()
+            keypoints_id = data_loader.dataset.keypoints_ids[i*args.batch_size:(i+1)*args.batch_size] # list of tuples (seq_id, start_idx) for each subsequence in the batch
+            for j in range(len(keypoints_id)):
+                seq_id, start_idx = keypoints_id[j]
+                #start_idx = int(start_idx/args.t_patch_size) # convert from frame index to index in the representation
+                sub_latent = latent[j]
+                repr_sum[seq_id, start_idx:start_idx+latent_len]  += torch.from_numpy(sub_latent) # weighted_latent
+                count_sum[seq_id, start_idx:start_idx+latent_len] += 1                            # taper_tensor
 
-        all_representations = repr_sum / count_sum.clamp(min=1) # (N, T, C)
+    all_representations = repr_sum / count_sum.clamp(min=1) # (N, T, C)
+    print("all_representations shape:", all_representations.shape)
     if args.if_val:
         np.save(args.save_dir + '/representations/mae_'+ args.dataset +'_val.npy', all_representations)
     else:
@@ -144,13 +134,16 @@ if __name__ == "__main__":
     if args.job == "compute_representations":
         """Set up data set and data loader"""
         if args.dataset == "mabe_mice":
-            dataset = MABeMouseDataset(path_to_data_dir=args.path_to_data_dir,
-                                        sampling_rate=args.sampling_rate,
-                                        num_frames=args.num_frames, 
-                                        sliding_window=args.num_frames-1,
-                                        if_fill=args.fill_holes,
-                                        augmentations=None,
-                                        include_testdata=True,)
+            dataset = MABeMouseDataset(mode = args.mode,
+                                    path_to_data_dir=args.path_to_data_dir,
+                                    sampling_rate=args.sampling_rate,
+                                    num_frames=args.num_frames,
+                                    sliding_window=args.sliding_window,
+                                    fill_holes=args.interp_holes,
+                                    augmentations=args.data_augment,
+                                    centeralign = args.centeralign, 
+                                    include_testdata = args.include_testdata,
+                                    model = "SkeletonMAE")
         elif args.dataset == "sdannce":
             dataset = SdannceDataset(path_to_data_dir=args.path_to_data_dir,
                                      sampling_rate=args.sampling_rate,
@@ -210,6 +203,6 @@ if __name__ == "__main__":
 
         # load pre-trained model
         model.load_state_dict(checkpoint_model, strict=False)
-        latent_len = int(args.num_frames/args.t_patch_size)
+        latent_len = args.num_frames#(/args.t_patch)
         compute_representations(model, loader, device, args)
     

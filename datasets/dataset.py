@@ -147,14 +147,6 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
         scale = [int(self.DEFAULT_GRID_SIZE / 2), int(self.DEFAULT_GRID_SIZE / 2),] * state_dim
         return np.divide(data - shift, scale)
 
-    @staticmethod
-    def _normalize(data, grid_size):
-        """Scale by dimensions of image and mean-shift to center of image."""
-        state_dim = data.shape[1] // 2
-        shift = [int(grid_size / 2), int(grid_size / 2)] * state_dim
-        scale = [int(grid_size / 2), int(grid_size / 2)] * state_dim
-        return np.divide(data - shift, scale)
-
     def unnormalize(self, data):
         """Undo normalize. Expects input data to be [sequence length, coordinates alternating between x and y]"""
         if torch.is_tensor(data):
@@ -171,28 +163,9 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
 
         return data.reshape(-1, state_dim * 2)
 
-    @staticmethod
-    def _unnormalize(data, grid_size):
-        """Undo normalize.
-        expects input data to be [sequence length, coordinates alternating between x and y]
-        """
-        if torch.is_tensor(data):
-            data = data.detach().cpu().numpy()
-        state_dim = data.shape[1] // 2
-
-        x_shift = int(grid_size / 2)
-        y_shift = int(grid_size / 2)
-        x_scale = int(grid_size / 2)
-        y_scale = int(grid_size / 2)
-
-        data[:, ::2] = data[:, ::2] * x_scale + x_shift
-        data[:, 1::2] = data[:, 1::2] * y_scale + y_shift
-
-        return data.reshape(-1, state_dim * 2)
 
     def transform_to_centered_data(self, data, center_index):
         # implemented only for mice
-
         # data shape is seq_len, num_inds, num_kpts, kpts_dims -> seq_len*num_inds, num_kpts, kpts_dims
         data = data.reshape(-1, *data.shape[2:])
 
@@ -229,7 +202,6 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
 
 
     def transform_to_centeralign_components(self, data, center_index=7):
-
         seq_len, num_mice = data.shape[:2]
         mouse_center, mouse_rotation, centered_data = self.transform_to_centered_data(data, center_index)
 
@@ -244,7 +216,6 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
         """
         Randomly samples a section with length self.max_keypoints_len of the input sequence. Returns a training sample
         """
-
         if self.interp_holes:
             sequence = self.fill_holes(sequence)
 
@@ -268,6 +239,7 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
 
         return feats
 
+
     def prepare_subsequence_sample(self, sequence: np.ndarray):
         """Returns one training sample"""
         if self.augmentations:
@@ -276,15 +248,12 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
             sequence = sequence.reshape(self.max_keypoints_len, -1)
         feats = self.featurise_keypoints(sequence)
         # flatten for now
-        feats = feats.reshape(self.max_keypoints_len, self.NUM_INDIVIDUALS, -1) # [300, num_ind, num_joints* 2d or 3d]
-
+        feats = feats.reshape(self.max_keypoints_len, self.NUM_INDIVIDUALS, -1) # [300, num_ind, num_joints* 2 or 3]
         return feats
 
 
     def __getitem__(self, idx: int):
-
         subseq_ix = self.keypoints_ids[idx]
         subsequence = self.seq_keypoints[subseq_ix[0], subseq_ix[1] : subseq_ix[1] + self.max_keypoints_len]
         inputs = self.prepare_subsequence_sample(subsequence)
-        
         return inputs, []

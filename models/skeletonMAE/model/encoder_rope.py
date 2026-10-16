@@ -6,11 +6,11 @@ from .layers_rope import SkeleEmbed, Block, RotaryTemporalEmbedding
 
 
 class STTFEncoder(nn.Module):
-    def __init__(self, dim_in=3, num_classes=3, dim_feat=256, depth=5, 
-                num_heads=8, mlp_ratio=4, num_frames=120, num_joints=25, patch_size=1, t_patch_size=3,
-                qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0., rope_ratio=0.5, 
-                drop_path_rate=0., norm_layer=nn.LayerNorm, 
-                protocol='compute_representations', dataset="mocap"):
+    def __init__(self, dim_in=3, num_classes=3, dim_feat=256, depth=5, num_heads=8, 
+                 mlp_ratio=4, num_frames=120, num_joints=25, patch_size=1, t_patch_size=3,
+                 qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0., 
+                 rope_ratio=0.5, drop_path_rate=0., norm_layer=nn.LayerNorm, 
+                 protocol='compute_representations', dataset="mocap"):
         super().__init__()
         self.num_classes = num_classes
 
@@ -24,10 +24,9 @@ class STTFEncoder(nn.Module):
         self.pos_drop = nn.Dropout(p=drop_rate)
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
         self.blocks = nn.ModuleList([
-            Block(
-                dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, 
-                qk_scale=qk_scale, drop=drop_rate, attn_drop=attn_drop_rate, rope_ratio=rope_ratio, 
-                drop_path=dpr[i], norm_layer=norm_layer) 
+            Block(dim=dim_feat, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, 
+                  qk_scale=qk_scale, drop=drop_rate, attn_drop=attn_drop_rate, 
+                  rope_ratio=rope_ratio, drop_path=dpr[i], norm_layer=norm_layer) 
             for i in range(depth)])
         self.norm = norm_layer(dim_feat)
 
@@ -59,7 +58,7 @@ class STTFEncoder(nn.Module):
         if x.ndim == 5:
             N, T, M, V, C = x.shape
             x = x.permute(0, 2, 1, 3, 4).contiguous().view(-1, T, V, C)
-        if x.ndim == 4:
+        elif x.ndim == 4:
             N, T, V, C = x.shape
             M =1
         NM = x.shape[0]
@@ -75,25 +74,26 @@ class STTFEncoder(nn.Module):
         x = x + self.pos_embed[:, :, :VP, :]
         x = x.reshape(NM, TP * VP, -1)
 
-        if downsample_rate is None:
-            downsample_rate = torch.ones(NM, device=x.device)
-        elif not torch.is_tensor(downsample_rate):
-            downsample_rate = torch.full((NM,), float(downsample_rate), device=x.device)
-        effective_stride = self.t_patch_size * downsample_rate  # [NM]
-        t_idx = torch.arange(TP, device=x.device).unsqueeze(0) * effective_stride.unsqueeze(1)  # [NM, TP]
-        t_idx = t_idx.unsqueeze(-1).expand(NM, TP, VP).reshape(NM, TP * VP)
+        # downsample_rate: int shared by the whole batch (None -> 1)
+        effective_stride = self.t_patch_size * (1 if downsample_rate is None else int(downsample_rate))
+        t_idx = torch.arange(TP, device=x.device) * effective_stride                 # [TP]
+        t_idx = t_idx.view(1, TP, 1).expand(NM, TP, VP).reshape(NM, TP * VP)
         cos, sin = self.rope(t_idx)
 
         for blk in self.blocks:
             x = blk(x, cos=cos, sin=sin) #, self.valid_patch_mask)              # apply Transformer blocks
         x = self.norm(x)
-
+        x = x.reshape(NM, TP, VP, -1)                        # [NM, TP, VP, C]
+        joint_mask = patch_mask.unsqueeze(-1).float()        # [NM, TP, VP, 1]
+        
         if self.protocol == "compute_representations":
-            x = x.reshape(NM, TP, VP, -1)                        # [NM, TP, VP, C]
-            joint_mask = patch_mask.unsqueeze(-1).float()        # [NM, TP, VP, 1]
             x = (x * joint_mask).sum(dim=2) / joint_mask.sum(dim=2).clamp(min=1) # joint-level masked mean (over VP) [NM, TP, C]
-            x = x.reshape(N, M, TP, -1).mean(dim=1)              # [N, TP, C]
-        else:
-            x = x.reshape(N, M, TP, VP, -1)
-            x = self.head(x)
+            x = x.reshape(N, M, TP, -1).mean(dim=1)          # [N, TP, C]
+            x = x.transpose(1, 2)                            # [N, D, TP]
+            x = F.interpolate(x, size=TP * self.t_patch_size, mode="linear", align_corners=False)
+            x = x.transpose(1, 2)
+        
+        elif self.protocol == "finetune":
+            x = (x * joint_mask).sum(dim=2) / joint_mask.sum(dim=2).clamp(min=1) # joint-level masked mean (over VP) [NM, TP, C]
+            x = x.reshape(N, M, TP, -1).mean(dim=1)          # [N, TP, C]
         return x

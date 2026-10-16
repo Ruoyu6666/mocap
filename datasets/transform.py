@@ -174,7 +174,7 @@ class ViewInvariant:
         return out
         
 
-    def _needs_flip(self, rotated_points, A, angle, index_vect=0):
+    def _needs_flip(self, rotated_points, A, angle, index_vect):
         """
         Check if the mouse is facing -X after rotation, needs a 180° flip. Uses left/right hip joints: forward = cross(left→right, spine).
         Args:       rotated_points: (J, 3) already rotated + centered reference frame
@@ -244,7 +244,7 @@ class ViewInvariant:
         return barycenter, index_vect, angle, pitch
 
 
-    def apply_transform(self, x, barycenter, angle, pitch):
+    def apply_transform(self, x, barycenter, angle):#, pitch):
         """
         Forward transform: center + rotate by +angle in XY.
         Args:   x:(T, J, 3) or None; barycenter: (3,); angle:float
@@ -252,34 +252,10 @@ class ViewInvariant:
         if x is None:
             return None
         out = ViewInvariant._rotate_xy(x - barycenter, angle)
-        if self.if_rotate_xz:
-            return ViewInvariant._rotate_xz(out, -pitch)
+        #if self.if_rotate_xz:
+        #    return ViewInvariant._rotate_xz(out, -pitch)
         return out
 
-   
-    def untransform(self, x, **kwargs):
-        """
-        Inverse transform: rotate by -angle + re-add barycenter.
-        Args:    x:      (B, T, J, 3) — batched sequences in canonical frame
-            kwargs:      must contain 'VI_angle' and 'VI_barycenter'
-                     (scalars, numpy arrays, or torch tensors)
-        Returns:
-            (B, T, J, 3) sequences restored to original coordinate frame
-        """
-        angle      = kwargs['VI_angle']
-        barycenter = kwargs['VI_barycenter']
-        angle      = float(np.squeeze(angle))
-        barycenter = np.array(barycenter).reshape(3)  # ensure (3,)
-
-        x_arr = np.array(x)                    # (B, T, J, 3), safe copy
-        x_inv = self._rotate_xy(x_arr, -angle) # --- Inverse rotation: apply -angle ---
-        x_inv = x_inv + barycenter             # Re-add barycenter
-
-        # Restore positions that were all-zero (missing markers) back to NaN  so downstream code handles them correctly.
-        nan_mask = np.all(x_arr == 0, axis=-1)  # (B, T, J) — all coords zero
-        x_inv[nan_mask] = np.nan
-
-        return x_inv
 
 
     def __call__(self, x, x_supp=(), **kwargs):

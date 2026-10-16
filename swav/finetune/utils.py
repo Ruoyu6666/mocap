@@ -6,8 +6,21 @@ import torch.nn.functional as F
 
 import os
 import sys
+import argparse
 sys.path.append("/home/rguo_hpc/myfolder/mocap")
 from swav.finetune.model import SwAVSkeletonModel
+
+
+
+def str2bool(v):
+    if type(v) == bool:
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    raise argparse.ArgumentTypeError(f"expected a boolean value, got '{v}'")
+
 
 # --------------------------------------------------------------------------
 # 2. Sinkhorn-Knopp: turns raw scores into equipartitioned soft codes
@@ -19,6 +32,10 @@ def sinkhorn(scores: torch.Tensor, eps: float = 0.05, n_iters: int = 3) -> torch
     Returns Q: (B, K) soft assignment, each row sums to 1, each column
     (approximately) equal mass -> prevents collapse to a few prototypes.
     """
+    # fp32 + global max subtraction: exp() can't overflow under fp16/autocast, and the
+    # constant factor is removed exactly by the normalization below
+    scores = scores.float()
+    scores = scores - scores.max()
     Q = torch.exp(scores / eps).T  # (K, B)
     B = Q.shape[1]
     K = Q.shape[0]
@@ -141,19 +158,12 @@ def build_optimizer(model: SwAVSkeletonModel, lr: float = 1e-4, weight_decay: fl
 
 
 @torch.no_grad()
-def compute_new_representations_overlapping(model, dataloader, device, which: str = "projection", t_patch_size: int = 1,):
-    """
-    Differences from your original code, both defensive fixes:
-      - no torch.squeeze() before indexing per-item latents — squeeze() would also collapse the batch dimension 
-        if the last batch happens to have batch_size 1, silently misindexing subsequent items.
-      - count_sum is clamped to a minimum of 1 before dividing, so any token position never covered by a window 
-        returns 0 instead of NaN (rather than propagating NaN through everything downstream).
- 
-    Returns: (num_sequences, full_len // t_patch_size, D_out) tensor, or (..., K) if which='cluster'. 
-            Positions never covered by any window are 0 in the output — check the returned count_sum-derived coverage
-            yourself if you need to distinguish "0 embedding" from "uncovered".
-    """
+def compute_new_representations_overlapping(model, dataloader, device, which: str = "projection", t_patch_size: int = 1,
+                                            fast_inference: bool = False, taper_edge_frac: float = None,):
+
     assert which in ("projection", "raw", "cluster")
+    assert isinstance(dataloader.sampler, torch.utils.data.SequentialSampler), \
+        "dataloader must not shuffle: outputs are matched to dataset.keypoints_ids by position"
     model.eval()
     dataset = dataloader.dataset
     num_sequences = dataset.num_sequences
@@ -161,6 +171,8 @@ def compute_new_representations_overlapping(model, dataloader, device, which: st
     T_tokens = full_len // t_patch_size
     count_sum = torch.zeros(num_sequences, T_tokens, 1)
     repr_sum = None  # allocated once we know D_out, from the first batch
+    
+    all_out = []
     item_ptr = 0
     for i, (x, _)  in enumerate(tqdm(dataloader)):
         x = x.to(device)
@@ -183,6 +195,10 @@ def compute_new_representations_overlapping(model, dataloader, device, which: st
                 out = probs.reshape(B, latent_len, -1)
         out = out.cpu()
 
+        if fast_inference:
+            all_out.append(out)
+            continue
+
         if repr_sum is None:
             D_out = out.shape[-1]
             repr_sum = torch.zeros(num_sequences, T_tokens, D_out)
@@ -191,10 +207,15 @@ def compute_new_representations_overlapping(model, dataloader, device, which: st
         for j, (seq_id, start_idx) in enumerate(keypoints_id_batch):
             start_token = int(start_idx / t_patch_size)
             end_token = start_token + latent_len
-            repr_sum[seq_id, start_token:end_token] += out[j]
+            repr_sum[seq_id, start_token:end_token] += out[j] 
             count_sum[seq_id, start_token:end_token] += 1
- 
-    all_representations = repr_sum / count_sum.clamp(min=1)
+
+    if fast_inference:
+        all_out = torch.cat(all_out, dim=0)
+        return all_out.reshape(num_sequences, -1, all_out.shape[-1])
+
+    covered = count_sum > 0
+    all_representations = torch.where(covered, repr_sum / count_sum.clamp(min=1e-8), torch.zeros_like(repr_sum))
     return all_representations
 
 

@@ -6,13 +6,14 @@ import sys
 sys.path.append("/home/rguo_hpc/myfolder/mocap")
 from datasets.augmentations import Augmentations, _resample_time
 from swav.finetune.model import SwAVSkeletonModel
-from swav.finetune.utils import swav_loss, sample_binned_time_indices, swav_loss_multiview, align_labels_to_tokens, pool_sequence
+from swav.finetune.utils import swav_loss_multiview, align_labels_to_tokens
 
 import numpy as np
 
 
 def train_one_epoch_clip_augmented(model: SwAVSkeletonModel, dataloader, optimizer, augment: Augmentations, 
-                                   device, freeze_prototypes_epoch: bool = False, log_every: int = 50,):
+                                   device, freeze_prototypes_epoch: bool = False, log_every: int = 50,
+                                   dataset: str = "mabe", downsample_rates = (1, 6)):
     """
     SwAV training where the two views are two independently-augmented copies of the clip, 
     each run through the encoder separately. Every frame position is used as a positive pair between the two views 
@@ -20,32 +21,45 @@ def train_one_epoch_clip_augmented(model: SwAVSkeletonModel, dataloader, optimiz
     """
     model.train()
     running_loss = 0.0
-    downsample_rates = (1, 5)
     n_views = len(downsample_rates)
     for step, batch in enumerate(dataloader):
         clip = batch[0] if isinstance(batch, (tuple, list)) else batch
-        clip = clip.to(device)      
-        B, T, _, _ = clip.shape     # (B, T, J, C)
+        clip = clip.to(device) 
+        if clip.ndim == 4:    
+            B, T, _, _ = clip.shape    # (B, T, J, C)
+        elif clip.ndim == 5:
+            N, T, M, V, C = clip.shape
+            clip = clip.permute(0, 2, 1, 3, 4).reshape(-1, T, V, C)
+            B = N * M
+        
         scores_list = []
         for rate in downsample_rates:
             if rate == 1:
                 clip_v_np = clip.clone().cpu().numpy()
                 for i in range(B):
-                    clip_v_np[i] = dataloader.dataset.mocap_normalize(clip_v_np[i])[0]
+                    if dataset == "sdannce":
+                        clip_v_np[i] = dataloader.dataset.mocap_normalize(clip_v_np[i])[0]
+                    elif dataset == "mabe":
+                        clip_v_np[i] = dataloader.dataset.mabe_normalize(clip_v_np[i])[0]
             else:
                 clip_v_np = clip.clone().cpu().numpy()[:, ::rate]
                 for i in range(B):
-                    seq = augment(clip_v_np[i])
-                    clip_v_np[i] = dataloader.dataset.mocap_normalize(seq)[0]
+                    if dataset == "sdannce":
+                        seq = augment(clip_v_np[i])
+                        clip_v_np[i] = dataloader.dataset.mocap_normalize(seq)[0]
+                    elif dataset == "mabe":
+                        seq = np.expand_dims(clip_v_np[i], axis=0)
+                        seq = dataloader.dataset.augment(seq)
+                        seq = dataloader.dataset.mabe_normalize(seq)[0]
+                        clip_v_np[i] = seq.squeeze()
             clip_v = torch.tensor(clip_v_np, dtype=torch.float32).to(device)
-
+            
             if model.mode == "freeze":
                 with torch.no_grad():
                     z_seq_v = model.encoder(clip_v) if rate == 1 else model.encoder(clip_v, rate)
             else:
                 z_seq_v = model.encoder(clip_v) if rate == 1 else model.encoder(clip_v, rate)
-
-            # calculate  scores
+            """
             # Sol 1: loss sequence level
             z_v = z_seq_v.mean(dim=1)  # (B, D) — pool, sequence
             """
@@ -56,13 +70,12 @@ def train_one_epoch_clip_augmented(model: SwAVSkeletonModel, dataloader, optimiz
                 z_v = z_v.reshape(-1 ,D)
             elif rate == 5:
                 z_v = z_seq_v.reshape(-1 ,D)
-            """
+            
             p_v = model.projection_head(z_v) if model.projection_head is not None else z_v
             p_v = F.normalize(p_v, dim=1, p=2)
             scores_list.append(model.prototypes(p_v))
 
         loss = swav_loss_multiview(scores_list)
-
         optimizer.zero_grad()
         loss.backward()
         if freeze_prototypes_epoch:
@@ -95,10 +108,6 @@ def train_one_epoch_clip_augmented_sequence_semisup(model: SwAVSkeletonModel,
     """
     Joint clip-level SwAV + frame-level classification loss
         total_loss = swav_weight * swav_loss + cls_weight * cls_loss
- 
-    Each entry in downsample_rates gives one view:
-    -> "clean" view: no augmentation, just dataloader.dataset's mocap_normalize, encoder called at 
-       its native rate. This view's UNPOOLED z_seq is also what the classification loss attaches to.
  
     All views are pooled (mean over time) and compared via swav_loss_multiview .
     Classification doesn't add any extra encoder compute: it reuses the rate=1 view's forward pass, just before pooling.
