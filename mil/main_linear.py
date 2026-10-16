@@ -2,12 +2,14 @@ import pickle
 import yaml
 import argparse
 import numpy as np
+
 from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
 
 
 parser = argparse.ArgumentParser(description='time classification by TimeMIL')
-parser.add_argument('--dataset', default="sdannce", type=str, help='dataset ')
+parser.add_argument('--dataset', default="mabe_mice", type=str, help='dataset ')
 parser.add_argument('--label', default="drug", type=str, help='dataset ')
 parser.add_argument('--subseq_len', default=3000, type=int, help='the length of sub sequence')
 parser.add_argument('--path_to_data_dir', default="/home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl", type=str)
@@ -16,43 +18,58 @@ parser.add_argument("--config", type=str, default = '../configs/sdannce/fmr1.yam
 
 
 args = parser.parse_args()
-if args.dataset == "sdannce":
-    Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/sdannce/fmr1/50/representations/mae_sdannce_tr.npy")[:, 25:3025]
-    Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/sdannce/fmr1/50/representations/mae_sdannce_val.npy")[:, 25:3025]
-    print(Xtr.shape, Xte.shape)
-if args.dataset == "sdannce_kinematic":
-    Xtr = np.load("/home/rguo_hpc/myfolder/mocap/swav/kinematic/data/kinematic_tr.py.npy")
-    Xte = np.load("/home/rguo_hpc/myfolder/mocap/swav/kinematic/data/kinematic_val.py.npy")
-    Xtr = Xtr.reshape(-1, args.subseq_len, Xtr.shape[-1])
-    Xte = Xte.reshape(-1, args.subseq_len, Xtr.shape[-1])
 
-with open(args.path_to_data_dir, 'rb') as file:
-     data = pickle.load(file)
-with open(args.config) as f:
-     split = yaml.safe_load(f)
-  
-N = int(90000 / args.subseq_len) # number of sequences per sequence
-label_tr = []
-label_te = []
-for mouse in split["fold_1"]["train"]:
-    num_seq = len(data[mouse]["ratid"])
-    gen  = str(data[mouse]["ratgen"])
-    label_tr = label_tr + [gen for i in range(num_seq * N)]
-for mouse in split["fold_1"]["valid"]:
-    num_seq = len(data[mouse]["ratid"])
-    gen = str(data[mouse]["ratgen"])
-    label_te = label_te + [gen for i in range(num_seq * N)]
-mapping = {s: i for i, s in enumerate(set(label_tr))}
-print(f"Mapping of ratgen labels to integers: {mapping}")
-ytr = [mapping[s] for s in label_tr]
-yte = [mapping[s] for s in label_te]
-y_train = np.array(ytr)
-y_test = np.array(yte)
+if "sdannce" in args.dataset:
+    if args.dataset == "sdannce":
+        Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/sdannce/fmr1/50/representations/mae_sdannce_tr.npy")[:, 25:3025]
+        Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/sdannce/fmr1/50/representations/mae_sdannce_val.npy")[:, 25:3025]
+        print(Xtr.shape, Xte.shape)
+    if args.dataset == "sdannce_kinematic":
+        Xtr = np.load("/home/rguo_hpc/myfolder/mocap/swav/kinematic/data/kinematic_tr.py.npy")
+        Xte = np.load("/home/rguo_hpc/myfolder/mocap/swav/kinematic/data/kinematic_val.py.npy")
+        Xtr = Xtr.reshape(-1, args.subseq_len, Xtr.shape[-1])
+        Xte = Xte.reshape(-1, args.subseq_len, Xtr.shape[-1])
+
+    with open(args.path_to_data_dir, 'rb') as file:
+        data = pickle.load(file)
+    with open(args.config) as f:
+        split = yaml.safe_load(f)
+    
+    N = int(90000 / args.subseq_len) # number of sequences per sequence
+    label_tr = []
+    label_te = []
+    for mouse in split["fold_1"]["train"]:
+        num_seq = len(data[mouse]["ratid"])
+        gen  = str(data[mouse]["ratgen"])
+        label_tr = label_tr + [gen for i in range(num_seq * N)]
+    for mouse in split["fold_1"]["valid"]:
+        num_seq = len(data[mouse]["ratid"])
+        gen = str(data[mouse]["ratgen"])
+        label_te = label_te + [gen for i in range(num_seq * N)]
+    mapping = {s: i for i, s in enumerate(set(label_tr))}
+    print(f"Mapping of ratgen labels to integers: {mapping}")
+    ytr = [mapping[s] for s in label_tr]
+    yte = [mapping[s] for s in label_te]
+    y_train = np.array(ytr)
+    y_test = np.array(yte)
+
+
+elif args.dataset == "mabe_mice":
+    X = np.load("/home/rguo_hpc/myfolder/mocap/outputs/mabe/features_pca.npy", allow_pickle=True).item()["embeddings"]
+    X = X.reshape(3736, -1 ,128)  # Reshape to (N, C)
+    test_labels = np.load("/home/rguo_hpc/myfolder/data/mabe_mice/mouse_triplets_test_labels.npy", allow_pickle=True).item()
+    y = test_labels["label_array"][-1][::1800]  # strain/lights
+    
+    indices = np.arange(X.shape[0])
+    train_idx, test_idx = train_test_split(indices, test_size=0.3, random_state=2, shuffle=True)
+    Xtr, Xte = X[train_idx], X[test_idx][::2]
+    y_train, y_test = y[train_idx], y[test_idx][::2]
 
 
 
 
-if args.dataset == "mocap":
+
+elif args.dataset == "mocap":
     Xtr = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/CLB/mae_mocap_tr_f1.npy", allow_pickle=True)
     Xte = np.load("/home/rguo_hpc/myfolder/mocap/outputs/representations/CLB/mae_mocap_val_f1.npy", allow_pickle=True)
 
@@ -101,6 +118,7 @@ if args.dataset == "mocap":
         yte = [mapping[s] for s in type_te]
         y_train = np.array(ytr)
         y_test = np.array(yte)
+
 
 
 # ---- Step 1: Reduce time dimension ----

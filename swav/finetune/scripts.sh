@@ -1,10 +1,35 @@
-##### With RoPe #####
+#------------
+#--- mabe ---
+#------------
+# num_frames 60
+python main.py --dataset mabe --mode finetune_last_n --unfreeze_n 3 --batch_size 128 \
+ --dim_in 2 --depth 7 --num_frames 60 --num_joints 12 --patch_size 2 --t_patch_size 1 \
+ --encoder_ckpt ../../outputs/mabe/trainonly/60/mae_checkpoint_epoch_15.pth --sliding_window 60\
+ --path_to_data_dir /home/rguo_hpc/myfolder/data/mabe_mice/mouse_triplet_train.npy 
+ --lr 5e-5
+
+
+python main.py --dataset mabe --mode finetune_last_n --unfreeze_n 3 --batch_size 128 \
+ --dim_in 2 --depth 7 --num_frames 60 --num_joints 12 --patch_size 2 --t_patch_size 1 \
+ --protocol compute_representations --checkpoint_path swav_output/checkpoint_epoch_5.pt \
+ --sliding_window 30
+
+
+# num frames 300
+python main.py --dataset mabe --mode finetune_last_n --unfreeze_n 3 --batch_size 128 --num_prototypes 192\
+ --dim_in 2 --depth 7 --num_frames 300 --num_joints 12 --patch_size 3 --t_patch_size 3\
+ --encoder_ckpt ../../outputs/mabe/trainonly/300/mae_checkpoint_epoch_15.pth --sliding_window 100\
+ --path_to_data_dir /home/rguo_hpc/myfolder/data/mabe_mice/mouse_triplet_train.npy
+
+
+python main.py --dataset mabe --mode finetune_last_n --unfreeze_n 3 --batch_size 128 --num_prototypes 192\
+ --dim_in 2 --depth 7 --num_frames 300 --num_joints 12 --patch_size 3 --t_patch_size 3\
+ --compute_representations --checkpoint_path swav_output/checkpoint_epoch_5.pt --sliding_window 60 \
+ --path_to_data_dir /home/rguo_hpc/myfolder/data/mabe_mice/mouse_triplet_train.npy 
 
 #----------------
 #--- sdannce ---
 #----------------
-
-
 #---  chd8 ---
 
 #---  cntnap2 ---
@@ -12,7 +37,6 @@ python main.py --mode finetune_last_n --unfreeze_n 2 --batch_size 192\
  --encoder_ckpt ../../outputs/sdannce/cntnap2/checkpoints/mae_checkpoint_epoch_5.pth \
  --path_to_data_dir /home/rguo_hpc/myfolder/data/sdannce/data_cntnap2.pkl \
  --config ../../configs/sdannce/cntnap2.yaml
-
 
 python main.py --mode finetune_last_n --unfreeze_n 2 --batch_size 192 \
  --compute_representations --checkpoint_path swav_output/checkpoint_epoch_10.pt \
@@ -26,7 +50,7 @@ python main.py --mode finetune_last_n --batch_size 128 \
 # --sliding_window 25
 # --semisup True --swav_weight 0.7 --cls_weight 0.3 --shuffle True # with semisup 
 
-
+# Compute
 python main.py --mode finetune_last_n --encoder_module models.skeletonMAE.model.encoder_rope \
  --compute_representations --checkpoint_path swav_output/len50/rope/10ckpt/128batch/checkpoint_epoch_15.pt \
  --num_frames 50 --batch_size 128 --shuffle False

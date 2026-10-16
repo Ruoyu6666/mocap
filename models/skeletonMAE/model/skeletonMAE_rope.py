@@ -1,8 +1,8 @@
+import random
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
-import warnings
 
 from .layers import trunc_normal_
 from .layers_rope import SkeleEmbed, RotaryTemporalEmbedding, Block
@@ -72,7 +72,7 @@ class SkeletonMAE(nn.Module):
             nn.init.constant_(m.weight, 1.0)
 
 
-    def random_masking(self, x, TP, VP, segment_mask_ratio=0.5, seg_len=5, joint_mask_ratio=0.5):
+    def random_masking(self, x, TP, VP, segment_mask_ratio=0.5, seg_len=5, joint_mask_ratio=0.6):
         N, L, D = x.shape
         assert L == TP * VP, f"Expected L={TP * VP}, got {L}"
         device = x.device
@@ -114,14 +114,15 @@ class SkeletonMAE(nn.Module):
         return x_masked, mask, ids_restore, ids_keep
     
     
-    def forward_encoder(self, x, downsample_rate=None, segment_mask_ratio=0.5, seg_len=5, joint_mask_ratio=0.5): # x: [NM, T, V, C]
+    def forward_encoder(self, x, downsample_rate=None, segment_mask_ratio=0.5, seg_len=5, joint_mask_ratio=0.6): # x: [NM, T, V, C]
         NM = x.shape[0]
         x = self.joints_embed(x)
         TP, VP = x.shape[1], x.shape[2]
         x = x + self.pos_embed[:, :, :VP, :] 
         x = x.reshape(NM, TP * VP, -1)
-
+        #joint_mask_ratio = random.uniform(0.4, 0.8)
         x, mask, ids_restore, ids_keep = self.random_masking(x, TP, VP, segment_mask_ratio, seg_len, joint_mask_ratio)
+        
         if downsample_rate is None:
             downsample_rate = torch.ones(NM, device=x.device)
         elif not torch.is_tensor(downsample_rate):
@@ -197,17 +198,13 @@ class SkeletonMAE(nn.Module):
         return loss
 
 
-    def forward(self, x, downsample_rate=None, 
-                segment_mask_ratio=0.5, seg_len=5, joint_mask_ratio=0.5):
-        if self.dataset == "mabe_mice":
-            N, T, M, _ = x.shape 
-            x = x.reshape(N, T, M, self.num_joints, self.dim_in)
-        else:
-            if x.ndim == 5:
-                N, T, M, V, C = x.shape # (batch_size, T, num_individuals,  num_joints, 3)
-                x = x.permute(0, 2, 1, 3, 4).contiguous().view(-1, T, V, C) # [B, 300, 10, 3]
-            elif x.ndim == 4:
-                N, T, V, C = x.shape
+    def forward(self, x, downsample_rate=None, segment_mask_ratio=0.5, seg_len=5, joint_mask_ratio=0.6):
+        if x.ndim == 5:
+            N, T, M, V, C = x.shape # (batch_size, T, num_individuals,  num_joints, 3)
+            x = x.permute(0, 2, 1, 3, 4).contiguous().view(-1, T, V, C) # [B, 300, 10, 3]
+        elif x.ndim == 4:
+            N, T, V, C = x.shape
+        
         latent, mask, ids_restore, TP = self.forward_encoder(x, downsample_rate, 
                                             segment_mask_ratio, seg_len, joint_mask_ratio)
         pred = self.forward_decoder(latent, ids_restore, TP, downsample_rate)   # [NM, TP * VP, C] = [3B, 1200, 2*3(t_patch_size)]
