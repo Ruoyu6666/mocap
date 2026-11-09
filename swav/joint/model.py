@@ -8,8 +8,8 @@ from swav.finetune.layers import ProjectionHead, PrototypeLayer
 from swav.finetune.utils import pool_sequence, swav_loss
 
 from datasets.augmentations import Augmentations
-from models.skeletonMAE.model.layers import trunc_normal_
-from models.skeletonMAE.model.layers_rope import SkeleEmbed, RotaryTemporalEmbedding, Block
+from models.skeletonMAE.model.utils import trunc_normal_
+from models.skeletonMAE.model.layers import SkeleEmbed, RotaryTemporalEmbedding, Block
 
 
 

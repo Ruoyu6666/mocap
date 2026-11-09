@@ -16,23 +16,17 @@ from ..dataset import BasePoseTrajDataset
 """
 head (Snout, EarL, EarR, SpineF), 
 trunk (SpineM, SpineL, TailBase, ShoulderL, ShoulderR, HipL, HipR), 
-forelimbs (ElbowL, WristL, HandL,ElbowR, WristR, HandR) 
-forelimbs (KneeL, AnkleL, FootL, KneeR, AnkleR, FootR)
+forelimbs (ElbowL, WristL, HandL,   ElbowR, WristR, HandR) 
+forelimbs (KneeL, AnkleL, FootL,    KneeR, AnkleR, FootR)
 The size of each animal was estimated by sampling the distance between two virtual markers (the snout and the tail base)
 
 NUM_KEYPOINTS = 23
-STR_BODY_PARTS = ["Snout", 
-                "EarL", "EarR",  
-                "SpineF", 
+STR_BODY_PARTS = ["Snout", "EarL", "EarR",  "SpineF", 
                 "SpineM", "SpineL", "TailBase",
-                "ShoulderL", "ElbowL", 
-                "WristL", "HandL", 
-                "ShoulderR", "ElbowR", 
-                "WristR", "HandR", 
-                "HipL", "KneeL", 
-                "AnkleL", "FootL", 
-                "HipR", "KneeR", 
-                "AnkleR", "FootR",] 
+                "ShoulderL", "ElbowL", "WristL", "HandL", 
+                "ShoulderR", "ElbowR", "WristR", "HandR", 
+                "HipL", "KneeL", "AnkleL", "FootL", 
+                "HipR", "KneeR", "AnkleR", "FootR",] 
 # https://github.com/tqxli/sdannce/blob/master/dannce/engine/skeletons/utils.py
 """
 

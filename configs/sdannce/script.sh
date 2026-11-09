@@ -11,7 +11,7 @@ python trainers/skeletonMAE/pretrain.py --dim_feat 192 --decoder_dim_feat 256 \
 python trainers/skeletonMAE/compute_representation.py --dim_feat 192 --depth 6 \
  --num_frames 50 --num_joints 18 --patch_size 3 --t_patch_size 1 --dataset sdannce \
  --path_to_data_dir ../data/sdannce/data_fmr1.pkl --sliding_window 5 --batch_size 128 \
- --save_dir outputs/sdannce/fmr1/50 --model_path outputs/sdannce/fmr1/50/checkpoints/epoch_15.pth\
+ --save_dir outputs/sdannce/fmr1/ --model_path outputs/sdannce/fmr1/50/checkpoints/epoch_15.pth \
  --if_val True
 
 #---- cntnap2 ----
@@ -36,7 +36,7 @@ python trainers/skeletonMAE/pretrain.py --dim_feat 192 --decoder_dim_feat 192 \
 python trainers/skeletonMAE/compute_representation.py --dim_feat 192 --depth 8 \
  --num_frames 50 --num_joints 18 --dataset sdannce \
  --path_to_data_dir ../data/sdannce/data_chd8.pkl --sliding_window 10 --batch_size 256 \
- --save_dir outputs/50 --model_path outputs/50/checkpoints/mae_checkpoint_epoch_15.pth \
+ --save_dir outputs/50 --model_path outputs/sdannce/chd8/82/checkpoints/mae_checkpoint_epoch_15.pth \
  --config ./configs/sdannce/chd8.yaml --if_val True 
 
 
@@ -53,9 +53,13 @@ python trainers/skeletonMAE/pretrain.py --dim_feat 192 --decoder_dim_feat 192 \
 #### mil ##
 ###########
 # ----- fmr1 ----
-python main.py --path_to_data_dir /home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl  \
+python main.py --dataset sdannce  \
+--path_to_data_dir /home/rguo_hpc/myfolder/data/sdannce/data_fmr1.pkl  \
  --config ../configs/sdannce/fmr1.yaml --if_interval True --instance_len 5  \
- --if_extract_feature False --subseq_len 3000 --lr 0.0002
+ --if_extract_feature False --subseq_len 3000 --lr 0.0001
+
+python main_old.py --dataset sdannce  --if_interval True --instance_len 5 \
+ --if_extract_feature False --subseq_len 3000 --lr 0.0001
 
 # ----- cntnap2 ----
 python main.py --path_to_data_dir /home/rguo_hpc/myfolder/data/sdannce/data_cntnap2.pkl \

@@ -109,7 +109,6 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
         return keypoints[:, ::sample_frequency, ...]
 
     def get_num_frames(self):
-
         return self.max_keypoints_len
 
     def __len__(self):
@@ -117,26 +116,21 @@ class BasePoseTrajDataset(torch.utils.data.Dataset):
 
     @staticmethod
     def fill_holes(data):
+        """Forward-fill zero keypoints; leading holes take the first valid frame. Joints never seen stay 0."""
         clean_data = copy.deepcopy(data)
         num_frames, num_individuals = clean_data.shape[:2]
 
         for m in range(num_individuals):
-            holes = np.where(clean_data[0, m, :, 0] == 0)
-            if holes.size == 0:
-                continue
-            for h in holes[0]:
-                sub = np.where(clean_data[:, m, h, 0] != 0)
-                if sub and sub[0].size > 0:
-                    clean_data[0, m, h, :] = clean_data[sub[0][0], m, h, :]
-                else:
-                    return np.empty((0))
+            holes = np.where(clean_data[0, m, :, 0] == 0)[0]
+            for h in holes:
+                sub = np.where(clean_data[:, m, h, 0] != 0)[0]
+                if sub.size > 0:
+                    clean_data[0, m, h, :] = clean_data[sub[0], m, h, :]
 
         for fr in range(1, np.shape(clean_data)[0]):
             for m in range(num_individuals):
-                holes = np.where(clean_data[fr, m, :, 0] == 0)
-                if holes.size == 0:
-                    continue
-                for h in holes[0]:
+                holes = np.where(clean_data[fr, m, :, 0] == 0)[0]
+                for h in holes:
                     clean_data[fr, m, h, :] = clean_data[fr - 1, m, h, :]
         return clean_data
 

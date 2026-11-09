@@ -23,17 +23,48 @@ def initialize_weights(model):
             
 
 
+class ExactAttention(nn.Module):
+    # Full softmax attention; mirrors NystromAttention (qkv proj, depthwise value residual conv, out dropout)
+    def __init__(self, dim, dim_head=64, heads=8, residual=True, residual_conv_kernel=33, dropout=0.):
+        super().__init__()
+        inner_dim = heads * dim_head
+        self.heads = heads
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
+        self.to_out = nn.Sequential(nn.Linear(inner_dim, dim), nn.Dropout(dropout))
+
+        self.residual = residual
+        if residual:
+            padding = residual_conv_kernel // 2
+            self.res_conv = nn.Conv2d(heads, heads, (residual_conv_kernel, 1), padding=(padding, 0), groups=heads, bias=False)
+
+    def forward(self, x):
+        B, N, _ = x.shape
+        q, k, v = self.to_qkv(x).chunk(3, dim=-1)
+        q, k, v = map(lambda t: t.reshape(B, N, self.heads, -1).transpose(1, 2), (q, k, v))  # B*h*N*d
+        out = F.scaled_dot_product_attention(q, k, v)
+        if self.residual:
+            out = out + self.res_conv(v)
+
+        out = out.transpose(1, 2).reshape(B, N, -1)
+        return self.to_out(out)
+
+
 class TransLayer(nn.Module):
-    def __init__(self, norm_layer=nn.LayerNorm, dropout=0.2, dim=512):
+    def __init__(self, norm_layer=nn.LayerNorm, dropout=0.2, dim=512, attn='nystrom'):
         super().__init__()
         self.norm = norm_layer(dim)
-        self.attn = NystromAttention(
-            dim = dim, dim_head = dim//8, heads = 8,
-            num_landmarks = dim//2,  # number of landmarks
-            pinv_iterations = 6,     # number of moore-penrose iterations for approximating pinverse. 6 was recommended by the paper
-            residual = True,         # whether to do an extra residual with the value or not. supposedly faster convergence if turned on
-            dropout=dropout
-        )
+        if attn == 'nystrom':
+            self.attn = NystromAttention(
+                dim = dim, dim_head = dim//8, heads = 8,
+                num_landmarks = dim//2,  # number of landmarks
+                pinv_iterations = 6,     # number of moore-penrose iterations for approximating pinverse. 6 was recommended by the paper
+                residual = True,         # whether to do an extra residual with the value or not. supposedly faster convergence if turned on
+                dropout=dropout
+            )
+        elif attn == 'exact':
+            self.attn = ExactAttention(dim=dim, dim_head=dim//8, heads=8, residual=True, dropout=dropout)
+        else:
+            raise ValueError(f"Unknown attention type: {attn}")
     def forward(self, x):
         x = x + self.attn(self.norm(x))
         return x
@@ -104,9 +135,11 @@ class WaveletEncoding(nn.Module):
         return x
 
 
+
+
 class TimeMIL(nn.Module):
     def __init__(self, in_features=512, mDim=64, n_classes=2, dropout=0.,max_seq_len=400,
-                 if_extract_feature=False, if_interval=False, instance_len=5):
+                 if_extract_feature=False, if_interval=False, instance_len=5, attn='nystrom'):
         super().__init__()
         self.if_interval = if_interval                  # if downsize the sequences by conv
         self.if_extract_feature = if_extract_feature    # False: use pretrained feature
@@ -150,8 +183,8 @@ class TimeMIL(nn.Module):
         self.pos_layer =  WaveletEncoding(mDim, max_seq_len, hidden_len) 
         self.pos_layer2 = WaveletEncoding(mDim, max_seq_len, hidden_len) 
         # self.pos_layer = ConvPosEncoding1D(mDim)
-        self.layer1 = TransLayer(dim=mDim, dropout=dropout)
-        self.layer2 = TransLayer(dim=mDim ,dropout=dropout)
+        self.layer1 = TransLayer(dim=mDim, dropout=dropout, attn=attn)
+        self.layer2 = TransLayer(dim=mDim, dropout=dropout, attn=attn)
         self._fc2 = nn.Sequential(nn.Linear(mDim, mDim), nn.ReLU(), nn.Dropout(dropout), nn.Linear(mDim, n_classes))
         self.alpha = nn.Parameter(torch.ones(1))
         
@@ -183,4 +216,3 @@ class TimeMIL(nn.Module):
         logits = self._fc2(x0)
             
         return x, logits
-

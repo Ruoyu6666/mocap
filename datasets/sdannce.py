@@ -12,7 +12,7 @@ from .dataset import BasePoseTrajDataset
 
 class SdannceDataset(BasePoseTrajDataset):
     NUM_KEYPOINTS = 18
-    STR_BODY_PARTS = ["Snout", "EarL", "EarR",  
+    STR_BODY_PARTS = ["Snout", "EarL", "EarR", 
                       "SpineF", "SpineM",  "TailBase",
                       "ShoulderL", "ElbowL", "WristL", 
                       "ShoulderR", "ElbowR", "WristR", 
@@ -124,7 +124,9 @@ class SdannceDataset(BasePoseTrajDataset):
         if self.normalize:           # Normalize
             seq, _, _ = self.mocap_normalize(seq)
         seq = torch.tensor(seq, dtype=torch.float32)
-        seq = torch.nan_to_num(seq, nan = 0.0) # replace NaN with 0.0
+
+        # replace NaN with 0.0
+        seq = torch.nan_to_num(seq, nan = 0.0) 
         return seq
     
     
@@ -180,3 +182,4 @@ class SdannceDataset(BasePoseTrajDataset):
         inputs = self.prepare_subsequence_sample(subsequence)
         labels = self.seq_labels[subseq_ix[0], subseq_ix[1] : subseq_ix[1] + self.max_keypoints_len]
         return inputs, labels # torch.Size([50, 18, 3]) (50,)
+    
