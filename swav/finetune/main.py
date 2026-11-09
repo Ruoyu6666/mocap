@@ -106,7 +106,7 @@ def build_argparser():
     # optimization
     p.add_argument("--epochs", type=int, default=20)
     p.add_argument("--batch_size", type=int, default=64)
-    p.add_argument("--lr", type=float, default=5e-4)
+    p.add_argument("--lr", type=float, default=5e-5)
     p.add_argument("--weight_decay", type=float, default=1e-3)
     p.add_argument("--num_workers", type=int, default=8)
     p.add_argument("--seed", type=int, default=0)

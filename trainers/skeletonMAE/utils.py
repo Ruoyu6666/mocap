@@ -1,6 +1,24 @@
+import os
 import math
+import time
+import argparse
+import torch
 
 
+
+def readable_timestamp():
+    return time.ctime().replace('  ', ' ').replace(' ', '_').replace(':', '_').lower()
+
+
+def str2bool(v):
+    if type(v) == bool:
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")
 
 def adjust_learning_rate(optimizer, epoch, args):
     """Linear warmup then half-cosine decay. `epoch` may be fractional (per-iteration schedule)."""
@@ -32,3 +50,14 @@ def build_param_groups(model, weight_decay):
             decay.append(p)
     return [{"params": decay, "weight_decay": weight_decay},
             {"params": no_decay, "weight_decay": 0.0},]
+
+
+def save_model(model, optimizer, args):
+    """Saves the final model after training"""
+    os.makedirs(args.save_dir, exist_ok=True)
+    model = {
+        'model': model.state_dict(), 
+        'optimizer': optimizer.state_dict(),
+        'args': args
+        }
+    torch.save(model, args.save_dir + 'model.pth') 
