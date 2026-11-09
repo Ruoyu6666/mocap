@@ -57,6 +57,7 @@ def param_groups_lrd(model, weight_decay=0.05, no_weight_decay_list=[], layer_de
     return list(param_groups.values())
 
 
+
 def get_layer_id_for_vit(name, num_layers):
     """
     Assign a parameter with its layer id

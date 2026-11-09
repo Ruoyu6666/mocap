@@ -19,7 +19,8 @@ import torch.nn as nn
 import os
 import sys
 sys.path.append("/home/rguo_hpc/myfolder/mocap/") # Adds the current directory to the Python path
-from models.skeletonMAE.model.layers import MLP, SkeleEmbed, Block, trunc_normal_, DropPath
+from models.skeletonMAE.model.utils import trunc_normal_
+from models.skeletonMAE.model.layers import SkeleEmbed, Block
 
 
 class DividedSTBlock(nn.Module):
