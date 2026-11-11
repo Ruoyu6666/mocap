@@ -84,6 +84,7 @@ def interpolate_temp_embed(model, checkpoint_model):
             pos_tokens = pos_tokens.permute(0, 2, 3, 1)
             pos_embed_model = pos_tokens
             checkpoint_model['temp_embed'] = pos_embed_model
+
 # --------------------------------------------------------
 # Interpolate position embeddings for high-resolution
 # References:

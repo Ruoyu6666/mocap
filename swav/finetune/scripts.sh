@@ -5,8 +5,7 @@
 python main.py --dataset mabe --mode finetune_last_n --unfreeze_n 3 --batch_size 128 \
  --dim_in 2 --depth 7 --num_frames 60 --num_joints 12 --patch_size 2 --t_patch_size 1 \
  --encoder_ckpt ../../outputs/mabe/trainonly/60/mae_checkpoint_epoch_15.pth --sliding_window 60\
- --path_to_data_dir /home/rguo_hpc/myfolder/data/mabe_mice/mouse_triplet_train.npy 
- --lr 5e-5
+ --path_to_data_dir /home/rguo_hpc/myfolder/data/mabe_mice/mouse_triplet_train.npy --lr 5e-5
 
 
 python main.py --dataset mabe --mode finetune_last_n --unfreeze_n 3 --batch_size 128 \
@@ -19,13 +18,27 @@ python main.py --dataset mabe --mode finetune_last_n --unfreeze_n 3 --batch_size
 python main.py --dataset mabe --mode finetune_last_n --unfreeze_n 3 --batch_size 128 --num_prototypes 192\
  --dim_in 2 --depth 7 --num_frames 300 --num_joints 12 --patch_size 3 --t_patch_size 3\
  --encoder_ckpt ../../outputs/mabe/trainonly/300/mae_checkpoint_epoch_15.pth --sliding_window 100\
- --path_to_data_dir /home/rguo_hpc/myfolder/data/mabe_mice/mouse_triplet_train.npy
+ --path_to_data_dir /home/rguo_hpc/myfolder/data/mabe_mice/mouse_triplet_train.npy 
 
 
 python main.py --dataset mabe --mode finetune_last_n --unfreeze_n 3 --batch_size 128 --num_prototypes 192\
  --dim_in 2 --depth 7 --num_frames 300 --num_joints 12 --patch_size 3 --t_patch_size 3\
  --compute_representations --checkpoint_path swav_output/checkpoint_epoch_5.pt --sliding_window 60 \
  --path_to_data_dir /home/rguo_hpc/myfolder/data/mabe_mice/mouse_triplet_train.npy 
+
+
+# num frames 600
+# sequence level
+python main.py --dataset mabe --mode finetune_last_n --unfreeze_n 3 --batch_size 64 --num_prototypes 128 \
+ --dim_in 2 --depth 8 --num_frames 600 --num_joints 12 --patch_size 3 --t_patch_size 3 \
+ --encoder_ckpt ../../outputs/mabe/checkpoints/mae_checkpoint_epoch_15.pth --sliding_window 100 \
+ --path_to_data_dir /home/rguo_hpc/myfolder/data/mabe_mice/mouse_triplet_train.npy --proj_out_dim 128 --proj_hidden_dim 512
+
+
+python main.py --dataset mabe --mode finetune_last_n --unfreeze_n 3 --batch_size 64 --num_prototypes 128\
+ --dim_in 2 --depth 8 --num_frames 600 --num_joints 12 --patch_size 3 --t_patch_size 3\
+ --protocol compute_representations --checkpoint_path swav_output/checkpoint_epoch_10.pt --sliding_window 100 \
+ --path_to_data_dir /home/rguo_hpc/myfolder/data/mabe_mice/mouse_triplet_train.npy --protocol compute_representations
 
 #----------------
 #--- sdannce ---

@@ -9,9 +9,6 @@
 # BEiT: https://github.com/microsoft/unilm/tree/master/beit
 # --------------------------------------------------------
 
-import json
-
-
 def param_groups_lrd(model, weight_decay=0.05, no_weight_decay_list=[], layer_decay=.75):
     """
     Parameter groups for layer-wise lr decay
@@ -19,7 +16,6 @@ def param_groups_lrd(model, weight_decay=0.05, no_weight_decay_list=[], layer_de
     """
     param_group_names = {}
     param_groups = {}
-
     num_layers = len(model.blocks) + 1
 
     layer_scales = list(layer_decay ** (num_layers - i) for i in range(num_layers + 1))
@@ -41,14 +37,10 @@ def param_groups_lrd(model, weight_decay=0.05, no_weight_decay_list=[], layer_de
 
         if group_name not in param_group_names:
             this_scale = layer_scales[layer_id]
-
             param_group_names[group_name] = {"lr_scale": this_scale,
-                                             "weight_decay": this_decay,
-                                             "params": [],}
-            
+                                             "weight_decay": this_decay,"params": [],}
             param_groups[group_name] = {"lr_scale": this_scale,
-                                        "weight_decay": this_decay,
-                                        "params": [],}
+                                        "weight_decay": this_decay,"params": [],}
 
         param_group_names[group_name]["params"].append(n)
         param_groups[group_name]["params"].append(p)
@@ -69,5 +61,18 @@ def get_layer_id_for_vit(name, num_layers):
         return 0
     elif name.startswith('blocks'):
         return int(name.split('.')[1]) + 1
+    else:
+        return num_layers
+
+
+def get_layer_id_for_vit_hbehave(name, num_layers):
+    if name in ["cls_token", "mask_token",]:
+        return 0
+    elif name.startswith("patch_embed"):
+        return 0
+    elif name.startswith("pos_embed"):
+        return 0
+    elif name.startswith("blocks"):
+        return int(name.split(".")[1]) + 1
     else:
         return num_layers

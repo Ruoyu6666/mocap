@@ -10,8 +10,8 @@ import sys
 from typing import Iterable
 import torch
 
-import util.misc as misc
-import util.lr_sched as lr_sched
+import mocap.models.util.misc as misc
+import mocap.models.util.lr_sched as lr_sched
 
 
 
